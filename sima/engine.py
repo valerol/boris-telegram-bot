@@ -66,7 +66,7 @@ class IntentEngine:
             "creation": ["infer desired artifact", "draft response"],
             "revision": ["locate issue", "propose correction"],
             "decision": ["identify options", "compare criteria", "recommend"],
-            "general": ["interpret request", "respond helpfully"],
+            "general": ["classify open-ended request", "select direct response mode"],
         }
         opers = list(base.get(task_type, base["general"]))
         if len(text.split()) > 20:
@@ -103,15 +103,14 @@ class IntentEngine:
         return min(round(score, 2), 1.0)
 
     def _summary(self, task_type: str) -> str:
-        if task_type == "question":
-            return "You are asking for a clear answer to your question."
-        if task_type == "creation":
-            return "You want me to create something useful from your request."
-        if task_type == "revision":
-            return "You want help improving or correcting something."
-        if task_type == "decision":
-            return "You want help making or explaining a decision."
-        return "You want a helpful response to your message."
+        summaries = {
+            "question": "You are asking a specific question that needs a direct answer.",
+            "creation": "You are asking for a new piece of content to be drafted.",
+            "revision": "You are asking to inspect existing material and improve it.",
+            "decision": "You are asking to weigh options and choose a direction.",
+            "general": "You are making an open-ended request without a fixed output type.",
+        }
+        return summaries.get(task_type, summaries["general"])
 
     def _analysis(
         self,
@@ -119,7 +118,14 @@ class IntentEngine:
         uncertainty_score: float,
         missing_information: list[str],
     ) -> str:
-        parts = [f"I treated this as a {task_type} request and separated the main goal from assumptions."]
+        openings = {
+            "question": "I identified the question being asked and separated the answer target from background details.",
+            "creation": "I identified the artifact to create and inferred the likely format from the wording.",
+            "revision": "I treated the request as an improvement task and looked for what needs to change.",
+            "decision": "I treated the request as a choice task and looked for options, criteria, and tradeoffs.",
+            "general": "I treated the request as open-ended and looked for the most concrete action implied by it.",
+        }
+        parts = [openings.get(task_type, openings["general"])]
         if uncertainty_score >= 0.4:
             parts.append("Some details are open, so I used cautious defaults instead of inventing specifics.")
         if missing_information:
