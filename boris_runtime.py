@@ -1,8 +1,13 @@
 from boris_domain import resolve_domain
+from boris_formatter import render_boris_response
 from boris_gate import ALLOW_WITH_SCOPE_LIMIT, CLARIFY, DENY_OUT_OF_SCOPE, decide_capability
 from boris_llm import build_llm_prompt, call_llm
-from boris_protocol import scaffold_llm_output
-from boris_templates import CLARIFY_RU, CORE_UNAVAILABLE_RU, OUT_OF_SCOPE_RU, SCOPE_LIMIT_PREFIX_RU
+from boris_response_contract import (
+    deterministic_contract,
+    fallback_contract,
+    parse_response_contract,
+)
+from boris_templates import CLARIFY_RU, CORE_UNAVAILABLE_RU, OUT_OF_SCOPE_RU
 from core_manager.core_application import build_core_application_protocol
 from core_manager.core_context import build_core_context
 from core_manager.core_loader import get_active_core
@@ -37,10 +42,12 @@ class BOISRuntime:
         )
 
         if gate_decision.decision == DENY_OUT_OF_SCOPE:
-            return scaffold_llm_output(text, OUT_OF_SCOPE_RU, analysis)
+            contract = deterministic_contract(analysis, "out_of_scope", OUT_OF_SCOPE_RU)
+            return _contract_output(analysis, contract, raw="", route="RULE")
 
         if gate_decision.decision == CLARIFY:
-            return scaffold_llm_output(text, CLARIFY_RU, analysis)
+            contract = deterministic_contract(analysis, "unclear", CLARIFY_RU)
+            return _contract_output(analysis, contract, raw="", route="RULE")
 
         prompt = build_llm_prompt(text, analysis, gate_decision.to_dict())
 
@@ -49,10 +56,11 @@ class BOISRuntime:
         except Exception:
             return self._llm_error_output(analysis)
 
-        if gate_decision.decision == ALLOW_WITH_SCOPE_LIMIT:
-            raw_llm_output = f"{SCOPE_LIMIT_PREFIX_RU}\n\n{raw_llm_output}"
+        contract, errors = parse_response_contract(raw_llm_output)
+        if contract is None:
+            contract = fallback_contract(analysis, errors)
 
-        return scaffold_llm_output(text, raw_llm_output, analysis)
+        return _contract_output(analysis, contract, raw=raw_llm_output)
 
     def status_core(self) -> str:
         active_core = self._core_loader()
@@ -104,17 +112,26 @@ def _requires_native_core(analysis: dict) -> bool:
 
 
 def _deterministic_output(analysis: dict, answer: str) -> dict:
+    contract = deterministic_contract(analysis, "unclear", answer)
+    contract["next_step"] = ""
+    contract["missing_info"] = []
+    return _contract_output(analysis, contract, raw=answer, route="RULE")
+
+
+def _contract_output(analysis: dict, contract: dict, raw: str, route: str = "LLM") -> dict:
+    answer = render_boris_response(contract)
     return {
         "input": analysis,
         "bois": {
             "intent": analysis.get("intent", "general"),
             "risk": analysis.get("risk", 0.0),
             "uncertainty": analysis.get("uncertainty", 0.0),
-            "route": "RULE",
+            "route": route,
         },
         "reasoning": {
-            "raw": answer,
+            "raw": raw,
         },
+        "contract": contract,
         "output": {
             "answer": answer,
             "key_points": [],

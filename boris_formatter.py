@@ -23,6 +23,73 @@ BLOCKED_FALLBACKS = (
 )
 
 
+def render_boris_response(contract: dict) -> str:
+    scope_status = contract.get("scope_status", "unclear")
+    if scope_status == "out_of_scope":
+        return _render_boundary(contract)
+    if scope_status in {"unclear", "invalid_input"}:
+        return _render_clarification(contract)
+    return _render_in_scope(contract)
+
+
+def _render_in_scope(contract: dict) -> str:
+    sections = [
+        ("BOIS", contract.get("bois_section")),
+        ("SIMA", contract.get("sima_section")),
+        ("BORIS", contract.get("boris_section")),
+    ]
+    lines = []
+    direct_answer = _clean_contract_text(contract.get("direct_answer"))
+    if direct_answer:
+        lines.append(direct_answer)
+        lines.append("")
+
+    for title, value in sections:
+        cleaned = _clean_contract_text(value)
+        if cleaned:
+            lines.append(f"{title}: {cleaned}")
+
+    boundary = _clean_contract_text(contract.get("boundary_note"))
+    if boundary:
+        lines.append(f"Граница: {boundary}")
+
+    next_step = _clean_contract_text(contract.get("next_step"))
+    if next_step:
+        lines.append(f"Следующий шаг: {next_step}")
+
+    return "\n".join(lines).strip() or EMPTY_PRESENTATION
+
+
+def _render_boundary(contract: dict) -> str:
+    boundary = _clean_contract_text(contract.get("boundary_note"))
+    if not boundary:
+        boundary = "Этот запрос выходит за пределы BORIS Support."
+    next_step = _clean_contract_text(contract.get("next_step"))
+    if next_step:
+        return f"{boundary}\n\nСледующий шаг: {next_step}"
+    return boundary
+
+
+def _render_clarification(contract: dict) -> str:
+    boundary = _clean_contract_text(contract.get("boundary_note"))
+    if not boundary:
+        boundary = "Запрос нужно уточнить, чтобы ответить в рамках BORIS Support."
+    missing = contract.get("missing_info") or []
+    next_step = _clean_contract_text(contract.get("next_step"))
+    lines = [boundary]
+    if missing:
+        lines.append("Не хватает: " + ", ".join(str(item) for item in missing))
+    if next_step:
+        lines.append("Следующий шаг: " + next_step)
+    return "\n".join(lines).strip()
+
+
+def _clean_contract_text(value) -> str:
+    if value is None:
+        return ""
+    return re.sub(r"\s+", " ", str(value)).strip()
+
+
 def present_answer(raw_llm_output: str) -> str:
     print("PRESENTATION_INPUT")
     text = _normalize_text(raw_llm_output)

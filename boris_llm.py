@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from boris_identity import identity_payload
+from boris_response_contract import REQUIRED_FIELDS
 
 load_dotenv()
 
@@ -43,7 +44,11 @@ If the gate decision limits scope, stay within BOIS/SIMA/BORIS methodology and d
 For external-domain-with-BORIS requests, explain through BOIS/SIMA/BORIS instead of becoming a generic external-domain consultant.
 Refuse or scope-limit if the Core Application Protocol or gate decision requires it.
 Before finalizing, run this self-check: Did I answer as BORIS Support, or did I become a generic consultant?
-Do not expose internal runtime fields or raw JSON unless the user explicitly asks for that format.
+Return strict JSON only. Do not write the final Telegram message.
+The JSON object must contain exactly these response contract fields:
+{json.dumps(list(REQUIRED_FIELDS), ensure_ascii=False)}
+Allowed scope_status values: in_scope, out_of_scope, unclear, invalid_input.
+Fill bois_section, sima_section, boris_section, direct_answer, boundary_note, and next_step as data fields.
 """
 
 
@@ -75,6 +80,7 @@ def call_llm(prompt: str):
 
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
+            response_format={"type": "json_object"},
             messages=[
                 {
                     "role": "system",
@@ -83,7 +89,7 @@ def call_llm(prompt: str):
                         "Use the loaded native BOIS Core as the canonical source for BOIS/SIMA/BORIS knowledge. "
                         "Do not invent BOIS/SIMA/BORIS rules. "
                         "Stay within BORIS Support scope. "
-                        "Do not expose internal runtime fields or raw JSON unless the user explicitly asks for that format."
+                        "Return only a valid JSON object that matches the BORIS response contract."
                     ),
                 },
                 {"role": "user", "content": prompt}

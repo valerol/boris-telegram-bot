@@ -4,17 +4,33 @@ import json
 from dataclasses import dataclass
 
 from boris_domain import resolve_domain
-from boris_formatter import present_answer
+from boris_formatter import render_boris_response
 from boris_gate import decide_capability
 from boris_llm import build_llm_prompt
-from boris_protocol import scaffold_llm_output
+from boris_response_contract import fallback_contract, parse_response_contract
 from core_manager.core_application import build_core_application_protocol
 from core_manager.core_context import build_core_context, hash_core_package, hash_json, loaded_core_surface
 from core_manager.core_loader import ActiveCore, get_active_core
 from sima_analyzer import parse
 
 
-TRACE_PLACEHOLDER_LLM_OUTPUT = "[diagnostic placeholder: LLM call not executed]"
+TRACE_PLACEHOLDER_LLM_OUTPUT = json.dumps(
+    {
+        "scope_status": "in_scope",
+        "request_type": "diagnostic_trace",
+        "primary_domain": "boris_support",
+        "applied_domain": "diagnostic",
+        "bois_section": "diagnostic BOIS section",
+        "sima_section": "diagnostic SIMA section",
+        "boris_section": "diagnostic BORIS section",
+        "direct_answer": "diagnostic response contract",
+        "boundary_note": "diagnostic boundary",
+        "next_step": "diagnostic next step",
+        "confidence": 0.5,
+        "missing_info": [],
+    },
+    ensure_ascii=False,
+)
 
 
 @dataclass(frozen=True)
@@ -112,9 +128,10 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
         gate_decision.to_dict(),
     )
     prompt = build_llm_prompt(user_text, analysis, gate_decision.to_dict())
-    scaffold = scaffold_llm_output(user_text, llm_output, analysis)
-    telegram_answer = scaffold["output"]["answer"]
-    presented_answer = present_answer(llm_output)
+    contract, contract_errors = parse_response_contract(llm_output)
+    if contract is None:
+        contract = fallback_contract(analysis, contract_errors)
+    telegram_answer = render_boris_response(contract)
 
     stages.extend(
         [
@@ -179,7 +196,7 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
         _stage(
             name="runtime LLM boundary",
             carrier="raw LLM output",
-            state="lost",
+            state="transformed",
             identity=identity,
             evidence={
                 "llm_call_executed": llm_output != TRACE_PLACEHOLDER_LLM_OUTPUT,
@@ -188,33 +205,36 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
                 "raw_output_contains_loaded_surface_sha256": _contains_text(llm_output, identity.loaded_surface_sha256),
             },
             identity_assertable=False,
-            notes="The diagnostic cannot prove the model used native core content unless that identity was present in the prompt or output.",
+            notes="The model boundary returns structured response contract data, but native core identity is not provable from output alone.",
         ),
         _stage(
-            name="boris_protocol.scaffold_llm_output",
-            carrier="runtime response dict",
+            name="boris_response_contract.validate_response_contract",
+            carrier="validated response contract",
             state="lost",
             identity=identity,
             evidence={
-                "input_has_active_core": "active_core" in scaffold.get("input", {}),
-                "reasoning_raw_length": len(scaffold.get("reasoning", {}).get("raw", "")),
-                "output_answer_length": len(scaffold.get("output", {}).get("answer", "")),
-                "output_contains_package_sha256": _contains_text(json.dumps(scaffold, ensure_ascii=False), identity.package_sha256),
+                "contract_valid": not contract_errors,
+                "contract_errors": contract_errors,
+                "scope_status": contract.get("scope_status"),
+                "contract_contains_package_sha256": _contains_text(
+                    json.dumps(contract, ensure_ascii=False),
+                    identity.package_sha256,
+                ),
             },
             identity_assertable=False,
-            notes="Scaffold preserves raw LLM text and reduced parser input, not native core content identity.",
+            notes="Validation checks structure, not final-answer keywords.",
         ),
         _stage(
-            name="boris_formatter.present_answer",
-            carrier="clean answer text",
+            name="boris_formatter.render_boris_response",
+            carrier="Telegram-visible answer text",
             state="lost",
             identity=identity,
             evidence={
-                "answer_length": len(presented_answer),
-                "answer_contains_package_sha256": _contains_text(presented_answer, identity.package_sha256),
+                "answer_length": len(telegram_answer),
+                "answer_contains_package_sha256": _contains_text(telegram_answer, identity.package_sha256),
             },
             identity_assertable=False,
-            notes="Formatter works on LLM output only.",
+            notes="Formatter creates the final visible text from the validated response contract.",
         ),
         _stage(
             name="bot.py Telegram reply_text",

@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 
@@ -21,7 +22,12 @@ class BORISSupportRuntimeTest(unittest.TestCase):
 
     def test_bois_business_plan_methodology_is_scope_limited(self):
         runtime = BOISRuntime(
-            llm_call=lambda prompt: "Метод: SIMA анализирует риски, BORIS оформляет runtime.",
+            llm_call=lambda prompt: _contract_json(
+                direct_answer="Методологический разбор через BOIS/SIMA/BORIS.",
+                bois_section="BOIS задает смысл и границы.",
+                sima_section="SIMA анализирует риски.",
+                boris_section="BORIS оформляет runtime.",
+            ),
             core_loader=_active_core,
         )
 
@@ -67,7 +73,8 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         result = runtime.run("Расскажи о BOIS")
 
         self.assertEqual(calls, [])
-        self.assertEqual(result["output"]["answer"], CORE_UNAVAILABLE_RU)
+        self.assertIn("Локальное BOIS Core", result["output"]["answer"])
+        self.assertIn("https://github.com/temnik-bois/BOIS/", result["output"]["answer"])
 
     def test_fallback_contains_official_repository_and_loading_prompt(self):
         runtime = BOISRuntime(llm_call=lambda prompt: "should not run", core_loader=_missing_core)
@@ -104,7 +111,7 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         self.assertIn("Validation status: passed", status)
 
     def test_available_core_context_is_preserved_in_analysis(self):
-        runtime = BOISRuntime(llm_call=lambda prompt: "Core-aware answer", core_loader=_active_core)
+        runtime = BOISRuntime(llm_call=lambda prompt: _contract_json(), core_loader=_active_core)
 
         result = runtime.run("Расскажи о BOIS")
         active_core = result["input"]["active_core"]
@@ -121,7 +128,7 @@ class BORISSupportRuntimeTest(unittest.TestCase):
     def test_prompt_receives_identifiable_core_content_and_no_fallback(self):
         prompts = []
         runtime = BOISRuntime(
-            llm_call=lambda prompt: prompts.append(prompt) or "Core-aware answer",
+            llm_call=lambda prompt: prompts.append(prompt) or _contract_json(),
             core_loader=_active_core,
         )
 
@@ -136,7 +143,7 @@ class BORISSupportRuntimeTest(unittest.TestCase):
     def test_external_domain_with_boris_prompt_contains_application_protocol(self):
         prompts = []
         runtime = BOISRuntime(
-            llm_call=lambda prompt: prompts.append(prompt) or "Методологический ответ",
+            llm_call=lambda prompt: prompts.append(prompt) or _contract_json(direct_answer="Методологический ответ"),
             core_loader=_active_core,
         )
 
@@ -157,6 +164,41 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         protocol = result["input"]["core_application_protocol"]
         self.assertEqual(protocol["request_kind"], "external_domain_with_boris_methodology")
         self.assertTrue(protocol["applicable_rules"])
+
+    def test_arbitrary_unclear_input_returns_structured_clarification(self):
+        runtime = BOISRuntime(llm_call=lambda prompt: "should not run", core_loader=_active_core)
+
+        result = runtime.run("???")
+
+        self.assertEqual(result["contract"]["scope_status"], "unclear")
+        self.assertIn("Уточните", result["output"]["answer"])
+
+    def test_malformed_llm_json_is_not_sent_to_user(self):
+        runtime = BOISRuntime(llm_call=lambda prompt: "not json at all", core_loader=_active_core)
+
+        result = runtime.run("Расскажи о BOIS")
+
+        self.assertEqual(result["contract"]["scope_status"], "unclear")
+        self.assertNotIn("not json at all", result["output"]["answer"])
+        self.assertIn("неструктурированный ответ модели", result["output"]["answer"])
+
+    def test_formatter_creates_final_text_not_llm(self):
+        runtime = BOISRuntime(
+            llm_call=lambda prompt: _contract_json(
+                direct_answer="LLM data field only",
+                bois_section="BOIS field",
+                sima_section="SIMA field",
+                boris_section="BORIS field",
+            ),
+            core_loader=_active_core,
+        )
+
+        result = runtime.run("Расскажи о BOIS")
+
+        self.assertNotEqual(result["output"]["answer"], result["reasoning"]["raw"])
+        self.assertIn("BOIS: BOIS field", result["output"]["answer"])
+        self.assertIn("SIMA: SIMA field", result["output"]["answer"])
+        self.assertIn("BORIS: BORIS field", result["output"]["answer"])
 
 
 def _active_core() -> ActiveCore:
@@ -211,6 +253,25 @@ def _missing_core() -> ActiveCore:
         validation_status="missing",
         validation_errors=["Active core path is missing"],
     )
+
+
+def _contract_json(**overrides) -> str:
+    contract = {
+        "scope_status": "in_scope",
+        "request_type": "explain_bois",
+        "primary_domain": "boris_support",
+        "applied_domain": "bois_core",
+        "bois_section": "BOIS section",
+        "sima_section": "SIMA section",
+        "boris_section": "BORIS section",
+        "direct_answer": "Core-aware answer",
+        "boundary_note": "Inside BORIS Support scope.",
+        "next_step": "Use this as a structured next step.",
+        "confidence": 0.8,
+        "missing_info": [],
+    }
+    contract.update(overrides)
+    return json.dumps(contract, ensure_ascii=False)
 
 
 if __name__ == "__main__":
