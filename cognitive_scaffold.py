@@ -1,18 +1,6 @@
-import json
 import re
 
 from formatter import EMPTY_PRESENTATION, present_answer
-
-
-TEXT_KEYS = (
-    "answer",
-    "conclusion",
-    "summary",
-    "description",
-    "message",
-    "text",
-    "content",
-)
 
 
 def scaffold_llm_output(user_input: str, llm_output: str) -> dict:
@@ -37,64 +25,6 @@ def scaffold_llm_output(user_input: str, llm_output: str) -> dict:
             "key_points": _key_points(answer),
         },
     }
-
-
-def _clean_answer(llm_output: str) -> str:
-    text = str(llm_output).strip()
-    if not text:
-        return "Не удалось получить ответ."
-
-    parsed = _parse_json(text)
-    if parsed is None:
-        return text
-
-    extracted = _extract_text(parsed)
-    return extracted.strip() if extracted else text
-
-
-def _parse_json(text: str):
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return None
-
-
-def _extract_text(value) -> str:
-    if isinstance(value, str):
-        return value
-
-    if isinstance(value, list):
-        parts = [_extract_text(item) for item in value]
-        return "\n".join(part for part in parts if part)
-
-    if not isinstance(value, dict):
-        return ""
-
-    for key in TEXT_KEYS:
-        if key in value:
-            extracted = _extract_text(value[key])
-            if extracted:
-                return extracted
-
-    response = value.get("response")
-    if isinstance(response, dict):
-        extracted = _extract_text(response)
-        if extracted:
-            return extracted
-
-    return _compact_dict(value)
-
-
-def _compact_dict(value: dict) -> str:
-    points = []
-    for key, item in value.items():
-        if isinstance(item, (str, int, float)):
-            points.append(f"{_label(key)}: {item}")
-        elif isinstance(item, list):
-            scalars = [str(entry) for entry in item if isinstance(entry, (str, int, float))]
-            if scalars:
-                points.append(f"{_label(key)}: {', '.join(scalars)}")
-    return "\n".join(points[:5])
 
 
 def _intent(user_input: str) -> str:
@@ -137,7 +67,3 @@ def _key_points(answer: str) -> list:
         if cleaned:
             points.append(cleaned)
     return points[:5] if len(points) > 1 else []
-
-
-def _label(key) -> str:
-    return str(key).replace("_", " ").strip().capitalize()

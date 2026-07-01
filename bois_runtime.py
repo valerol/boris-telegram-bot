@@ -1,36 +1,62 @@
-import os
-from dotenv import load_dotenv
-from openai import OpenAI
+import json
 
-from bois import run as run_bois
+from bois_context import BOIS_CONTEXT
+from cognitive_scaffold import scaffold_llm_output
+from llm import call_llm
+from parser import parse
 
-load_dotenv()
 
-def get_client():
-    return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+LLM_ERROR_MESSAGE = "LLM call failed. Please check OPENAI_API_KEY and runtime logs."
 
 
 class BOISRuntime:
 
-    def run(self, user_text: str):
-        return run_bois(user_text)
+    def run(self, text: str) -> dict:
+        print("BOIS_RUNTIME_START")
+        parsed = parse(text)
+        prompt = self._build_prompt(text, parsed)
 
-    def call_llm(self, parsed):
+        try:
+            raw_llm_output = call_llm(prompt)
+        except Exception:
+            return self._llm_error_output(parsed)
 
-        client = get_client()
+        result = scaffold_llm_output(text, raw_llm_output)
+        result["input"] = parsed
+        result["bois"]["intent"] = parsed.get("intent", result["bois"]["intent"])
+        result["bois"]["risk"] = parsed.get("risk", result["bois"]["risk"])
+        result["bois"]["uncertainty"] = parsed.get("uncertainty", result["bois"]["uncertainty"])
+        result["bois"]["route"] = "LLM"
+        return result
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a BOIS runtime assistant."
-                },
-                {
-                    "role": "user",
-                    "content": str(parsed)
-                }
-            ]
-        )
+    def _build_prompt(self, text: str, parsed: dict) -> str:
+        return f"""{BOIS_CONTEXT}
 
-        return response.choices[0].message.content
+User request:
+{text}
+
+Parsed runtime context:
+{json.dumps(parsed, ensure_ascii=False, indent=2)}
+
+Think freely and answer the user's request usefully.
+Use the BOIS/SIMA/BORIS context when the user asks about BOIS, SIMA, BORIS, or this assistant.
+Do not return raw JSON, schemas, or internal runtime dumps unless the user explicitly asks for them.
+"""
+
+    def _llm_error_output(self, parsed: dict) -> dict:
+        return {
+            "input": parsed,
+            "bois": {
+                "intent": parsed.get("intent", "general"),
+                "risk": parsed.get("risk", 0.0),
+                "uncertainty": parsed.get("uncertainty", 0.0),
+                "route": "LLM",
+            },
+            "reasoning": {
+                "raw": "",
+            },
+            "output": {
+                "answer": LLM_ERROR_MESSAGE,
+                "key_points": [],
+            },
+        }

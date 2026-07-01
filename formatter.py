@@ -43,7 +43,7 @@ def present_answer(raw_llm_output: str) -> str:
     if not answer or _is_blocked_fallback(answer) or _looks_like_raw_object(answer):
         answer = EMPTY_PRESENTATION
 
-    print("PRESENTATION_OUTPUT")
+    print("PRESENTATION_OUTPUT_READY")
     return answer
 
 

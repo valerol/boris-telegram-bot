@@ -18,7 +18,14 @@ def call_llm(prompt: str):
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "BOIS generator"},
+                {
+                    "role": "system",
+                    "content": (
+                        "You are the free reasoning engine inside BOIS Bot. "
+                        "Reason freely and answer the user directly. "
+                        "Do not expose internal runtime fields or raw JSON unless the user explicitly asks for that format."
+                    ),
+                },
                 {"role": "user", "content": prompt}
             ]
         )
