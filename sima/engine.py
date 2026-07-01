@@ -16,6 +16,9 @@ class IntentAnalysis:
     user_visible_analysis: str = ""
 
     def to_snapshot(self) -> dict[str, object]:
+        return self.to_dict()
+
+    def to_dict(self) -> dict[str, object]:
         return {
             "intent": self.intent,
             "task_type": self.task_type,
@@ -125,4 +128,3 @@ class IntentEngine:
 
 
 IntentAnalyzer = IntentEngine
-

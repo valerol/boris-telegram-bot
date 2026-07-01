@@ -15,6 +15,9 @@ class GateResult:
     risk: str
     reason: str
 
+    def to_dict(self) -> dict[str, bool | str]:
+        return {"allowed": self.allowed, "reason": self.reason, "risk": self.risk}
+
     @property
     def decision(self) -> GateDecision:
         return GateDecision.PROCEED if self.allowed else GateDecision.STOP
@@ -49,4 +52,3 @@ class DecisionGate:
         if any(term in normalized for term in self._sensitive_terms):
             return GateResult(allowed=True, risk="medium", reason="sensitive_domain")
         return GateResult(allowed=True, risk="low", reason="allowed")
-

@@ -18,14 +18,14 @@ dev = [
 ]
 
 [project.scripts]
-reasoning-telegram-bot = "bot.telegram_adapter:main"
+reasoning-telegram-bot = "bot.main:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["bois", "boris", "bot", "config", "core", "memory", "qa", "runtime", "sima"]
+packages = ["bois", "boris", "bot", "config", "core", "memory", "qa", "runtime", "sima", "trace"]
 py-modules = ["main"]
 
 [tool.pytest.ini_options]

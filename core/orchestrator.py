@@ -3,12 +3,12 @@ from __future__ import annotations
 from bois.guard import DecisionGate
 from boris.engine import ReasoningEngine, ReasoningFrame
 from config.settings import Settings
-from core.rendering import HumanTraceRenderer
 from memory.models import ChatMessage
 from memory.store import PostgresSessionStore
 from qa.validator import ResponseValidator
 from runtime.llm import LLMClient
 from sima.engine import IntentAnalysis, IntentEngine
+from trace.renderer import HumanTraceRenderer
 
 REFUSAL_TEXT = "I can’t proceed with this request."
 

@@ -21,6 +21,9 @@ class ReasoningFrame:
         return self.reasoning_frame
 
     def to_snapshot(self) -> dict[str, object]:
+        return self.to_dict()
+
+    def to_dict(self) -> dict[str, object]:
         return {
             "domain": self.domain,
             "constraints": self.constraints,
@@ -69,4 +72,3 @@ class ReasoningEngine:
 
 
 ReasoningStructurer = ReasoningEngine
-
