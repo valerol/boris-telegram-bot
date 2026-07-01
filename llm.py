@@ -13,7 +13,10 @@ def call_llm(prompt: str):
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "BOIS generator"},
+            {
+                "role": "system",
+                "content": "You answer users directly in natural language. Do not output JSON unless explicitly requested.",
+            },
             {"role": "user", "content": prompt}
         ]
     )

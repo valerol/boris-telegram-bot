@@ -8,7 +8,9 @@ def build_prompt(parsed):
 INPUT:
 {json.dumps(parsed, ensure_ascii=False, indent=2)}
 
-Return structured response only.
+Answer the user's request in natural language.
+Do not return JSON, schemas, dictionaries, or code blocks unless the user explicitly asks for them.
+Keep the internal context hidden and provide only the final user-facing answer.
 """
 
 def run(user_text: str):
