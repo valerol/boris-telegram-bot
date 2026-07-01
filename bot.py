@@ -4,7 +4,6 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
 from bois_runtime import BOISRuntime
-from formatter import format_response
 
 load_dotenv()
 
@@ -23,7 +22,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = runtime.run(user_text)
 
     await update.message.reply_text(
-        format_response(result)
+        result["output"]["answer"]
     )
 
 

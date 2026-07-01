@@ -4,7 +4,7 @@ from openai import OpenAI
 
 from bois import run as run_bois
 
-load_dotenv()  # ← ОБЯЗАТЕЛЬНО здесь
+load_dotenv()
 
 def get_client():
     return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -17,7 +17,7 @@ class BOISRuntime:
 
     def call_llm(self, parsed):
 
-        client = get_client()  # ← создаём здесь, не глобально
+        client = get_client()
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",

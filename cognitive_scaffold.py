@@ -26,7 +26,7 @@ def scaffold_llm_output(user_input: str, llm_output: str) -> dict:
             "intent": _intent(user_input),
             "risk": _risk(user_input, llm_output),
             "uncertainty": _uncertainty(user_input),
-            "route": _route(llm_output),
+            "route": "LLM",
         },
         "output": {
             "answer": answer,
@@ -124,13 +124,6 @@ def _uncertainty(user_input: str) -> float:
     if any(marker in user_input.lower() for marker in ("maybe", "может", "примерно", "не знаю")):
         return 0.55
     return 0.25
-
-
-def _route(llm_output: str) -> str:
-    text = llm_output.strip()
-    if _parse_json(text) is not None:
-        return "HYBRID"
-    return "LLM"
 
 
 def _key_points(answer: str) -> list:
