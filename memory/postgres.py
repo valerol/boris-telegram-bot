@@ -32,9 +32,23 @@ class PostgresSessionStore:
                     chat_id BIGINT NOT NULL,
                     conversation_history JSONB NOT NULL DEFAULT '[]'::jsonb,
                     last_reasoning_context JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    state_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    execution_traces JSONB NOT NULL DEFAULT '[]'::jsonb,
                     risk_level TEXT NOT NULL DEFAULT 'low',
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 );
+                """
+            )
+            await conn.execute(
+                """
+                ALTER TABLE chat_sessions
+                    ADD COLUMN IF NOT EXISTS state_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb;
+                """
+            )
+            await conn.execute(
+                """
+                ALTER TABLE chat_sessions
+                    ADD COLUMN IF NOT EXISTS execution_traces JSONB NOT NULL DEFAULT '[]'::jsonb;
                 """
             )
 
@@ -43,7 +57,7 @@ class PostgresSessionStore:
             row = await conn.fetchrow(
                 """
                 SELECT user_id, chat_id, conversation_history, last_reasoning_context,
-                       risk_level, updated_at
+                       state_snapshots, execution_traces, risk_level, updated_at
                 FROM chat_sessions
                 WHERE user_id = $1
                 """,
@@ -58,6 +72,8 @@ class PostgresSessionStore:
                 ChatMessage.from_dict(item) for item in _json_value(row["conversation_history"])
             ],
             last_reasoning_context=dict(_json_value(row["last_reasoning_context"])),
+            state_snapshots=list(_json_value(row["state_snapshots"])),
+            execution_traces=list(_json_value(row["execution_traces"])),
             risk_level=str(row["risk_level"]),
             updated_at=row["updated_at"],
         )
@@ -69,13 +85,15 @@ class PostgresSessionStore:
                 """
                 INSERT INTO chat_sessions (
                     user_id, chat_id, conversation_history, last_reasoning_context,
-                    risk_level, updated_at
+                    state_snapshots, execution_traces, risk_level, updated_at
                 )
-                VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6)
+                VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8)
                 ON CONFLICT (user_id) DO UPDATE SET
                     chat_id = EXCLUDED.chat_id,
                     conversation_history = EXCLUDED.conversation_history,
                     last_reasoning_context = EXCLUDED.last_reasoning_context,
+                    state_snapshots = EXCLUDED.state_snapshots,
+                    execution_traces = EXCLUDED.execution_traces,
                     risk_level = EXCLUDED.risk_level,
                     updated_at = EXCLUDED.updated_at
                 """,
@@ -83,6 +101,8 @@ class PostgresSessionStore:
                 session.chat_id,
                 json.dumps([message.to_dict() for message in session.conversation_history]),
                 json.dumps(session.last_reasoning_context),
+                json.dumps(session.state_snapshots),
+                json.dumps(session.execution_traces),
                 session.risk_level,
                 session.updated_at,
             )
@@ -97,4 +117,3 @@ def _json_value(value: Any) -> Any:
     if isinstance(value, str):
         return json.loads(value)
     return value
-

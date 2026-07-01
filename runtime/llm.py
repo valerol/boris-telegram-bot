@@ -5,8 +5,9 @@ from typing import Protocol
 
 from openai import AsyncOpenAI
 
-from boris.structurer import ReasoningFrame
+from boris.engine import ReasoningFrame
 from memory.models import ChatMessage
+from sima.engine import IntentAnalysis
 
 
 class LLMClient(Protocol):
@@ -14,6 +15,7 @@ class LLMClient(Protocol):
         self,
         user_text: str,
         history: list[ChatMessage],
+        analysis: IntentAnalysis,
         reasoning_frame: ReasoningFrame,
     ) -> str:
         ...
@@ -32,6 +34,7 @@ class OpenAILLMClient:
         self,
         user_text: str,
         history: list[ChatMessage],
+        analysis: IntentAnalysis,
         reasoning_frame: ReasoningFrame,
     ) -> str:
         messages = [
@@ -50,6 +53,11 @@ class OpenAILLMClient:
                 "role": "user",
                 "content": (
                     f"Context: {reasoning_frame.domain_context}\n"
+                    f"Intent: {analysis.intent}\n"
+                    f"Actions: {', '.join(analysis.opers)}\n"
+                    f"Uncertainty: {analysis.uncertainty_score}\n"
+                    f"Missing information: {', '.join(analysis.missing_information) or 'none'}\n"
+                    f"Constraints: {'; '.join(reasoning_frame.constraints)}\n"
                     f"Approach: {reasoning_frame.strategy}\n"
                     f"User request: {user_text}"
                 ),

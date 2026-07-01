@@ -1,6 +1,6 @@
 # Reasoning Telegram Bot
 
-Production-ready Telegram AI bot with a hidden structured reasoning flow and a natural-language trace for users.
+Production-ready Telegram AI bot with a deterministic, gated reasoning flow and a natural-language trace for users.
 
 Every normal user response follows this visible format:
 
@@ -11,7 +11,35 @@ Every normal user response follows this visible format:
 💬 Answer
 ```
 
-Internal control, analysis, domain framing, validation, and state are never shown to the user.
+Internal control, analysis, domain framing, validation, and state are never shown to the user. The first internal step is a hard gate; if it denies a request, intent analysis, domain structuring, and the LLM call do not run.
+
+## Structure
+
+```text
+/bot
+  telegram_adapter.py
+/core
+  orchestrator.py
+  rendering.py
+/bois
+  guard.py
+/sima
+  engine.py
+/boris
+  engine.py
+/runtime
+  llm.py
+/memory
+  store.py
+  postgres.py
+/qa
+  validator.py
+/config
+  settings.py
+main.py
+```
+
+The visible response is rendered locally after model execution. The renderer does not call the LLM.
 
 ## Requirements
 
@@ -44,6 +72,12 @@ MAX_HISTORY_MESSAGES=20
 python -m bot.telegram_adapter
 ```
 
+or:
+
+```bash
+python main.py
+```
+
 The application creates its PostgreSQL table at startup.
 
 ## Test
@@ -51,4 +85,3 @@ The application creates its PostgreSQL table at startup.
 ```bash
 python -m pytest
 ```
-
