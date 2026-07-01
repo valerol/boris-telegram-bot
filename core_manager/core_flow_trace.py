@@ -9,6 +9,7 @@ from boris_gate import decide_capability
 from boris_llm import build_llm_prompt
 from boris_response_contract import fallback_contract, parse_response_contract
 from core_manager.core_application import build_core_application_protocol
+from core_manager.contract_extractor import extract_contract_from_active_core
 from core_manager.core_context import build_core_context, hash_core_package, hash_json, loaded_core_surface
 from core_manager.core_loader import ActiveCore, get_active_core
 from sima_analyzer import parse
@@ -50,6 +51,8 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
     analysis = parse(user_text)
     active_core_context = build_core_context(active_core)
     analysis["active_core"] = active_core_context
+    extracted_contract = extract_contract_from_active_core(active_core)
+    analysis["extracted_contract"] = extracted_contract.to_dict()
 
     stages = [
         _stage(
@@ -128,10 +131,10 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
         gate_decision.to_dict(),
     )
     prompt = build_llm_prompt(user_text, analysis, gate_decision.to_dict())
-    contract, contract_errors = parse_response_contract(llm_output)
+    contract, contract_errors = parse_response_contract(llm_output, extracted_contract, analysis)
     if contract is None:
         contract = fallback_contract(analysis, contract_errors)
-    telegram_answer = render_boris_response(contract)
+    telegram_answer = render_boris_response(contract, analysis.get("extracted_contract"))
 
     stages.extend(
         [
@@ -147,6 +150,24 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
             },
             identity_assertable=_contains_identity(active_core_context, identity),
             notes="Gate receives the structured active_core context indirectly through analysis.",
+        ),
+        _stage(
+            name="core_manager.contract_extractor.extract_contract_from_active_core",
+            carrier="ExtractedContract object",
+            state="transformed" if extracted_contract.available else "lost",
+            identity=identity,
+            evidence={
+                "contract_id": extracted_contract.contract_id,
+                "extraction_status": extracted_contract.extraction_status,
+                "source_files_count": len(extracted_contract.source_files),
+                "required_output_fields_count": len(extracted_contract.required_output_fields),
+                "missing_sources": extracted_contract.missing_sources,
+                "all_output_fields_have_provenance": all(
+                    bool(field.get("provenance")) for field in extracted_contract.required_output_fields
+                ),
+            },
+            identity_assertable=bool(extracted_contract.source_files),
+            notes="Response contract is extracted from loaded native core sources and carries field provenance.",
         ),
         _stage(
             name="core_manager.core_application.build_core_application_protocol",

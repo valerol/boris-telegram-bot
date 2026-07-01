@@ -178,9 +178,11 @@ class BORISSupportRuntimeTest(unittest.TestCase):
 
         result = runtime.run("Расскажи о BOIS")
 
-        self.assertEqual(result["contract"]["scope_status"], "unclear")
+        self.assertEqual(result["contract"]["scope_status"], "in_scope")
         self.assertNotIn("not json at all", result["output"]["answer"])
-        self.assertIn("неструктурированный ответ модели", result["output"]["answer"])
+        self.assertNotIn("valid_response_contract", result["output"]["answer"])
+        self.assertNotIn("неструктурированный", result["output"]["answer"])
+        self.assertIn("структурированном формате BOIS/SIMA/BORIS", result["output"]["answer"])
 
     def test_formatter_creates_final_text_not_llm(self):
         runtime = BOISRuntime(
@@ -199,6 +201,57 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         self.assertIn("BOIS: BOIS field", result["output"]["answer"])
         self.assertIn("SIMA: SIMA field", result["output"]["answer"])
         self.assertIn("BORIS: BORIS field", result["output"]["answer"])
+
+    def test_answer_field_is_normalized_into_contract(self):
+        runtime = BOISRuntime(
+            llm_call=lambda prompt: json.dumps({"answer": "Что такое BOIS: структурный ответ"}, ensure_ascii=False),
+            core_loader=_active_core,
+        )
+
+        result = runtime.run("Что такое BOIS?")
+
+        self.assertEqual(result["contract"]["scope_status"], "in_scope")
+        self.assertIn("Что такое BOIS", result["output"]["answer"])
+        self.assertNotIn("valid_response_contract", result["output"]["answer"])
+
+    def test_partial_direct_answer_is_completed(self):
+        runtime = BOISRuntime(
+            llm_call=lambda prompt: json.dumps({"direct_answer": "Частичный ответ"}, ensure_ascii=False),
+            core_loader=_active_core,
+        )
+
+        result = runtime.run("Расскажи о BOIS")
+
+        for field in (
+            "scope_status",
+            "request_type",
+            "primary_domain",
+            "applied_domain",
+            "bois_section",
+            "sima_section",
+            "boris_section",
+            "direct_answer",
+            "boundary_note",
+            "next_step",
+            "confidence",
+            "missing_info",
+        ):
+            self.assertIn(field, result["contract"])
+        self.assertIn("Частичный ответ", result["output"]["answer"])
+
+    def test_final_answer_never_contains_contract_validation_words(self):
+        runtime = BOISRuntime(llm_call=lambda prompt: "not json at all", core_loader=_active_core)
+
+        result = runtime.run("Что такое BOIS?")
+
+        forbidden = (
+            "valid_response_contract",
+            "raw or unstructured model response",
+            "validation error",
+            "неструктурированный ответ модели",
+        )
+        for item in forbidden:
+            self.assertNotIn(item, result["output"]["answer"])
 
 
 def _active_core() -> ActiveCore:

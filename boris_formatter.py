@@ -23,20 +23,21 @@ BLOCKED_FALLBACKS = (
 )
 
 
-def render_boris_response(contract: dict) -> str:
+def render_boris_response(contract: dict, extracted_contract: dict | None = None) -> str:
     scope_status = contract.get("scope_status", "unclear")
     if scope_status == "out_of_scope":
         return _render_boundary(contract)
     if scope_status in {"unclear", "invalid_input"}:
         return _render_clarification(contract)
-    return _render_in_scope(contract)
+    return _render_in_scope(contract, extracted_contract)
 
 
-def _render_in_scope(contract: dict) -> str:
+def _render_in_scope(contract: dict, extracted_contract: dict | None = None) -> str:
+    bois_label, sima_label, boris_label = _section_labels(extracted_contract)
     sections = [
-        ("BOIS", contract.get("bois_section")),
-        ("SIMA", contract.get("sima_section")),
-        ("BORIS", contract.get("boris_section")),
+        (bois_label, contract.get("bois_section")),
+        (sima_label, contract.get("sima_section")),
+        (boris_label, contract.get("boris_section")),
     ]
     lines = []
     direct_answer = _clean_contract_text(contract.get("direct_answer"))
@@ -58,6 +59,17 @@ def _render_in_scope(contract: dict) -> str:
         lines.append(f"Следующий шаг: {next_step}")
 
     return "\n".join(lines).strip() or EMPTY_PRESENTATION
+
+
+def _section_labels(extracted_contract: dict | None) -> tuple[str, str, str]:
+    labels = ["BOIS", "SIMA", "BORIS"]
+    if not isinstance(extracted_contract, dict):
+        return tuple(labels)
+    organs = extracted_contract.get("organs") or []
+    for index, organ in enumerate(organs[:3]):
+        if isinstance(organ, dict) and organ.get("name"):
+            labels[index] = str(organ["name"])
+    return tuple(labels)
 
 
 def _render_boundary(contract: dict) -> str:
