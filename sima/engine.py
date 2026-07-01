@@ -6,14 +6,25 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True, slots=True)
 class IntentAnalysis:
     intent: str
-    task_type: str
     opers: list[str] = field(default_factory=list)
-    uncertainty_score: float = 0.0
-    missing_information: list[str] = field(default_factory=list)
-    ambiguities: list[str] = field(default_factory=list)
-    missing_context: list[str] = field(default_factory=list)
-    user_visible_summary: str = ""
-    user_visible_analysis: str = ""
+    uncertainty: float = 0.0
+    missing_info: list[str] = field(default_factory=list)
+
+    @property
+    def task_type(self) -> str:
+        return self.intent
+
+    @property
+    def uncertainty_score(self) -> float:
+        return self.uncertainty
+
+    @property
+    def missing_information(self) -> list[str]:
+        return self.missing_info
+
+    @property
+    def missing_context(self) -> list[str]:
+        return self.missing_info
 
     def to_snapshot(self) -> dict[str, object]:
         return self.to_dict()
@@ -21,34 +32,27 @@ class IntentAnalysis:
     def to_dict(self) -> dict[str, object]:
         return {
             "intent": self.intent,
-            "task_type": self.task_type,
             "opers": self.opers,
-            "uncertainty_score": self.uncertainty_score,
-            "missing_information": self.missing_information,
+            "uncertainty": self.uncertainty,
+            "missing_info": self.missing_info,
         }
 
 
 class IntentEngine:
     def analyze(self, user_text: str) -> IntentAnalysis:
         cleaned = " ".join(user_text.strip().split())
-        task_type = self._task_type(cleaned)
-        opers = self._opers(cleaned, task_type)
-        missing_information = self._missing_information(cleaned, task_type)
-        ambiguities = self._ambiguities(cleaned, task_type)
-        uncertainty_score = self._uncertainty_score(cleaned, ambiguities, missing_information)
+        intent = self._intent(cleaned)
+        opers = self._opers(cleaned, intent)
+        missing_info = self._missing_info(cleaned, intent)
+        uncertainty = self._uncertainty(cleaned, missing_info)
         return IntentAnalysis(
-            intent=cleaned,
-            task_type=task_type,
+            intent=intent,
             opers=opers,
-            uncertainty_score=uncertainty_score,
-            missing_information=missing_information,
-            ambiguities=ambiguities,
-            missing_context=missing_information,
-            user_visible_summary=self._summary(task_type),
-            user_visible_analysis=self._analysis(task_type, uncertainty_score, missing_information),
+            uncertainty=uncertainty,
+            missing_info=missing_info,
         )
 
-    def _task_type(self, text: str) -> str:
+    def _intent(self, text: str) -> str:
         lower = text.lower()
         if "?" in text or lower.startswith(("how", "what", "why", "when", "where", "who")):
             return "question"
@@ -60,77 +64,38 @@ class IntentEngine:
             return "decision"
         return "general"
 
-    def _opers(self, text: str, task_type: str) -> list[str]:
+    def _opers(self, text: str, intent: str) -> list[str]:
         base = {
-            "question": ["identify question", "answer directly"],
-            "creation": ["infer desired artifact", "draft response"],
-            "revision": ["locate issue", "propose correction"],
-            "decision": ["identify options", "compare criteria", "recommend"],
-            "general": ["classify open-ended request", "select direct response mode"],
+            "question": ["classify_question", "extract_answer_target"],
+            "creation": ["classify_artifact", "infer_output_format"],
+            "revision": ["classify_revision", "locate_change_target"],
+            "decision": ["classify_decision", "extract_options", "extract_criteria"],
+            "general": ["classify_open_request", "select_response_mode"],
         }
-        opers = list(base.get(task_type, base["general"]))
+        opers = list(base.get(intent, base["general"]))
         if len(text.split()) > 20:
-            opers.insert(1, "summarize key details")
+            opers.insert(1, "compress_context")
         return opers
 
-    def _ambiguities(self, text: str, task_type: str) -> list[str]:
-        ambiguities: list[str] = []
+    def _missing_info(self, text: str, intent: str) -> list[str]:
+        missing: list[str] = []
         if len(text.split()) < 4:
-            ambiguities.append("The request is brief, so there may be unstated preferences.")
-        if task_type in {"creation", "revision"} and not any(
+            missing.append("detail_level")
+        if intent in {"creation", "revision"} and not any(
             marker in text.lower() for marker in ("tone", "format", "length", "audience")
         ):
-            ambiguities.append("The desired style and level of detail are not fully specified.")
-        return ambiguities
-
-    def _missing_information(self, text: str, task_type: str) -> list[str]:
-        missing: list[str] = []
-        if task_type == "decision" and "between" not in text.lower():
-            missing.append("The options or evaluation criteria may need to be inferred.")
+            missing.append("style_constraints")
+        if intent == "decision" and "between" not in text.lower():
+            missing.append("decision_options")
+            missing.append("decision_criteria")
         return missing
 
-    def _uncertainty_score(
-        self,
-        text: str,
-        ambiguities: list[str],
-        missing_information: list[str],
-    ) -> float:
+    def _uncertainty(self, text: str, missing_info: list[str]) -> float:
         score = 0.1
         if len(text.split()) < 4:
             score += 0.25
-        score += min(0.2 * len(ambiguities), 0.4)
-        score += min(0.2 * len(missing_information), 0.4)
+        score += min(0.18 * len(missing_info), 0.55)
         return min(round(score, 2), 1.0)
-
-    def _summary(self, task_type: str) -> str:
-        summaries = {
-            "question": "You are asking a specific question that needs a direct answer.",
-            "creation": "You are asking for a new piece of content to be drafted.",
-            "revision": "You are asking to inspect existing material and improve it.",
-            "decision": "You are asking to weigh options and choose a direction.",
-            "general": "You are making an open-ended request without a fixed output type.",
-        }
-        return summaries.get(task_type, summaries["general"])
-
-    def _analysis(
-        self,
-        task_type: str,
-        uncertainty_score: float,
-        missing_information: list[str],
-    ) -> str:
-        openings = {
-            "question": "I identified the question being asked and separated the answer target from background details.",
-            "creation": "I identified the artifact to create and inferred the likely format from the wording.",
-            "revision": "I treated the request as an improvement task and looked for what needs to change.",
-            "decision": "I treated the request as a choice task and looked for options, criteria, and tradeoffs.",
-            "general": "I treated the request as open-ended and looked for the most concrete action implied by it.",
-        }
-        parts = [openings.get(task_type, openings["general"])]
-        if uncertainty_score >= 0.4:
-            parts.append("Some details are open, so I used cautious defaults instead of inventing specifics.")
-        if missing_information:
-            parts.append("Where context was missing, I kept the answer limited to what could be inferred.")
-        return " ".join(parts)
 
 
 IntentAnalyzer = IntentEngine

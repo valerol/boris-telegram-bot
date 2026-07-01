@@ -68,10 +68,15 @@ class Orchestrator:
                 "I can help with this, but I need to keep the answer general because the generated answer "
                 "did not match the required response boundary."
             )
-        rendered = self._renderer.render(analysis, frame, answer)
+        gate_snapshot = {
+            "allowed": gate_result.allowed,
+            "risk": gate_result.risk,
+            "reason": gate_result.reason,
+        }
+        rendered = self._renderer.render(analysis, frame, answer, gate_snapshot)
 
         if not self._validator.is_valid(rendered):
-            rendered = self._renderer.fallback(analysis, frame)
+            rendered = self._renderer.fallback(analysis, frame, gate_snapshot)
 
         session.conversation_history.extend(
             [
@@ -80,11 +85,7 @@ class Orchestrator:
             ]
         )
         session.last_reasoning_context = {
-            "gate": {
-                "allowed": gate_result.allowed,
-                "risk": gate_result.risk,
-                "reason": gate_result.reason,
-            },
+            "gate": gate_snapshot,
             "intent": analysis.to_snapshot(),
             "structure": frame.to_snapshot(),
         }
@@ -105,17 +106,10 @@ class Orchestrator:
             return self._analyzer.analyze(user_text)
         except Exception:
             return IntentAnalysis(
-                intent=" ".join(user_text.strip().split()),
-                task_type="general",
-                opers=["interpret request", "respond helpfully"],
-                uncertainty_score=0.7,
-                missing_information=["Some request details could not be analyzed reliably."],
-                ambiguities=["Some details are unclear."],
-                missing_context=["Some request details could not be analyzed reliably."],
-                user_visible_summary="You want a helpful response to your message.",
-                user_visible_analysis=(
-                    "Some details were unclear, so I used a cautious reading of your request."
-                ),
+                intent="general",
+                opers=["classify_open_request", "select_response_mode"],
+                uncertainty=0.7,
+                missing_info=["intent_parse"],
             )
 
     def _safe_structure(self, analysis: IntentAnalysis, risk: str) -> ReasoningFrame:
