@@ -140,6 +140,32 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         self.assertIn("canonical-test-rule", prompts[0])
         self.assertIn(result["input"]["active_core"]["identity"]["loaded_surface_sha256"], prompts[0])
 
+    def test_core_execution_filter_is_present_in_analysis_and_prompt(self):
+        prompts = []
+        runtime = BOISRuntime(
+            llm_call=lambda prompt: prompts.append(prompt) or _contract_json(),
+            core_loader=_active_core,
+        )
+
+        result = runtime.run("Расскажи о BOIS")
+
+        self.assertEqual(result["contract"]["scope_status"], "in_scope")
+        self.assertNotEqual(result["output"]["answer"], CORE_UNAVAILABLE_RU)
+        self.assertIn("core_execution_filter", result["input"])
+        self.assertEqual(result["input"]["core_execution_filter"]["mode"], "unknown")
+        self.assertEqual(result["input"]["core_execution_filter"]["response_boundary"], "unset")
+        self.assertEqual(result["input"]["core_execution_filter"]["must_use_layers"], ["BOIS", "SIMA", "BORIS"])
+
+        prompt = prompts[0]
+        self.assertIn("CORE EXECUTION FILTER:", prompt)
+        self.assertIn('"response_boundary": "unset"', prompt)
+        self.assertLess(prompt.index("BORIS Support identity:"), prompt.index("CORE EXECUTION FILTER:"))
+        self.assertLess(prompt.index("CORE EXECUTION FILTER:"), prompt.index("Core Application Protocol:"))
+        self.assertLess(prompt.index("Core Application Protocol:"), prompt.index("SIMA analysis:"))
+        self.assertLess(prompt.index("SIMA analysis:"), prompt.index("Capability gate decision:"))
+        self.assertLess(prompt.index("Capability gate decision:"), prompt.index("Relevant Native BOIS Core context:"))
+        self.assertLess(prompt.index("Relevant Native BOIS Core context:"), prompt.index("User request:"))
+
     def test_external_domain_with_boris_prompt_contains_application_protocol(self):
         prompts = []
         runtime = BOISRuntime(

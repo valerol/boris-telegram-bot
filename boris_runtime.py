@@ -11,6 +11,7 @@ from boris_templates import CLARIFY_RU, CORE_UNAVAILABLE_RU, OUT_OF_SCOPE_RU
 from core_manager.core_application import build_core_application_protocol
 from core_manager.contract_extractor import extract_contract_from_active_core
 from core_manager.core_context import build_core_context
+from core_manager.core_execution_filter import build_core_execution_filter
 from core_manager.core_loader import get_active_core
 from sima_analyzer import parse
 
@@ -38,6 +39,17 @@ class BOISRuntime:
         analysis["domain"] = domain
         gate_decision = decide_capability(analysis, domain)
         analysis["gate"] = gate_decision.to_dict()
+        core_execution_filter = build_core_execution_filter(
+            active_core,
+            analysis,
+            gate_decision,
+        )
+        print(
+            "CORE_EXECUTION_FILTER_CREATED "
+            f"mode={core_execution_filter.get('mode')} "
+            f"response_boundary={core_execution_filter.get('response_boundary')}"
+        )
+        analysis["core_execution_filter"] = core_execution_filter
         analysis["core_application_protocol"] = build_core_application_protocol(
             text,
             analysis,

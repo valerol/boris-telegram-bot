@@ -20,8 +20,8 @@ def build_llm_prompt(user_text: str, analysis: dict, gate_decision: dict) -> str
     return f"""BORIS Support identity:
 {json.dumps(identity_payload(), ensure_ascii=False, indent=2)}
 
-Contract Provenance:
-{json.dumps(_contract_provenance(extracted_contract), ensure_ascii=False, indent=2)}
+CORE EXECUTION FILTER:
+{json.dumps(analysis.get("core_execution_filter", {}), ensure_ascii=False, indent=2)}
 
 Core Application Protocol:
 {json.dumps(analysis.get("core_application_protocol", {}), ensure_ascii=False, indent=2)}
@@ -49,6 +49,8 @@ For external-domain-with-BORIS requests, explain through BOIS/SIMA/BORIS instead
 Refuse or scope-limit if the Core Application Protocol or gate decision requires it.
 Before finalizing, run this self-check: Did I answer as BORIS Support, or did I become a generic consultant?
 Return strict JSON only. Do not write the final Telegram message.
+Contract Provenance:
+{json.dumps(_contract_provenance(extracted_contract), ensure_ascii=False, indent=2)}
 The JSON object must contain exactly these response contract fields:
 {json.dumps(_contract_field_names(extracted_contract), ensure_ascii=False)}
 Allowed scope_status values: in_scope, out_of_scope, unclear, invalid_input.
