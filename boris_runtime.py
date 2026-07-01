@@ -3,6 +3,7 @@ from boris_gate import ALLOW_WITH_SCOPE_LIMIT, CLARIFY, DENY_OUT_OF_SCOPE, decid
 from boris_llm import build_llm_prompt, call_llm
 from boris_protocol import scaffold_llm_output
 from boris_templates import CLARIFY_RU, OUT_OF_SCOPE_RU, SCOPE_LIMIT_PREFIX_RU
+from core_manager.core_loader import get_active_core
 from sima_analyzer import parse
 
 
@@ -16,6 +17,12 @@ class BOISRuntime:
     def run(self, text: str) -> dict:
         print("BOIS_RUNTIME_START")
         analysis = parse(text)
+        active_core = get_active_core()
+        analysis["active_core"] = {
+            "available": active_core.available,
+            "version": active_core.core_version,
+            "path": str(active_core.active_path) if active_core.active_path else None,
+        }
         domain = resolve_domain(text)
         analysis["domain"] = domain
         gate_decision = decide_capability(analysis, domain)
