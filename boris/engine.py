@@ -33,22 +33,13 @@ class ReasoningFrame:
 
 class ReasoningEngine:
     def structure(self, analysis: IntentAnalysis, risk: str) -> ReasoningFrame:
-        constraints = [
-            "Answer in natural language.",
-            "Do not reveal hidden implementation details.",
-            "Return only the direct answer text.",
-            "Do not include headings, labels, or explanation sections.",
-        ]
-        if risk != "low":
-            constraints.append("Keep the answer cautious and avoid overclaiming.")
-        reasoning_frame = self._reasoning_frame(analysis.task_type)
+        structured = boris_run(analysis.to_dict())
+        constraints = list(structured["constraints"])
         return ReasoningFrame(
-            domain=self._domain(analysis.task_type),
+            domain=str(structured["domain"]),
             constraints=constraints,
-            reasoning_frame=reasoning_frame,
-            user_visible_decision=(
-                f"I chose to {reasoning_frame}, while keeping the response clear and limited to what can be supported."
-            ),
+            reasoning_frame="constraint_application",
+            user_visible_decision="",
         )
 
     def _domain(self, task_type: str) -> str:
@@ -73,3 +64,16 @@ class ReasoningEngine:
 
 
 ReasoningStructurer = ReasoningEngine
+
+
+def boris_run(sima: dict[str, object]) -> dict[str, object]:
+    if sima["intent"] == "question":
+        return {
+            "domain": "qa",
+            "constraints": ["be concise", "avoid hallucination"],
+        }
+
+    return {
+        "domain": "general",
+        "constraints": ["be neutral"],
+    }

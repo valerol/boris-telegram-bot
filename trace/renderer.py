@@ -12,6 +12,30 @@ INTENT_SUMMARIES = {
 }
 
 
+def render_trace(
+    text: str,
+    bois: dict[str, object],
+    sima: dict[str, object],
+    boris: dict[str, object],
+    answer: str,
+) -> str:
+    return f"""
+🧭 What I understood
+Intent: {sima["intent"]}
+
+🧠 How I analyzed it
+Ops: {", ".join(str(oper) for oper in sima["opers"])}
+Uncertainty: {sima["uncertainty"]}
+
+⚙️ How I decided to proceed
+Risk: {bois["risk"]}
+Constraints: {", ".join(str(constraint) for constraint in boris["constraints"])}
+
+💬 Answer
+{answer}
+""".strip()
+
+
 class HumanTraceRenderer:
     """Deterministic renderer with no external calls."""
 
@@ -23,13 +47,12 @@ class HumanTraceRenderer:
         gate: dict[str, object] | None = None,
     ) -> str:
         clean_answer = self._clean(answer)
-        return "\n\n".join(
-            [
-                "🧭 What I understood\n" + self._understood(analysis),
-                "🧠 How I analyzed it\n" + self._analysis(analysis),
-                "⚙️ How I decided to proceed\n" + self._decision(frame, gate),
-                "💬 Answer\n" + clean_answer,
-            ]
+        return render_trace(
+            "",
+            gate or {"allowed": True, "reason": "ok", "risk": "low"},
+            analysis.to_dict(),
+            frame.to_dict(),
+            clean_answer,
         )
 
     def fallback(

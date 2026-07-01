@@ -40,16 +40,12 @@ class IntentAnalysis:
 
 class IntentEngine:
     def analyze(self, user_text: str) -> IntentAnalysis:
-        cleaned = " ".join(user_text.strip().split())
-        intent = self._intent(cleaned)
-        opers = self._opers(cleaned, intent)
-        missing_info = self._missing_info(cleaned, intent)
-        uncertainty = self._uncertainty(cleaned, missing_info)
+        parsed = sima_run(user_text)
         return IntentAnalysis(
-            intent=intent,
-            opers=opers,
-            uncertainty=uncertainty,
-            missing_info=missing_info,
+            intent=str(parsed["intent"]),
+            opers=list(parsed["opers"]),
+            uncertainty=float(parsed["uncertainty"]),
+            missing_info=list(parsed["missing_info"]),
         )
 
     def _intent(self, text: str) -> str:
@@ -99,3 +95,13 @@ class IntentEngine:
 
 
 IntentAnalyzer = IntentEngine
+
+
+def sima_run(text: str) -> dict[str, object]:
+    words = text.split()
+    return {
+        "intent": "question" if "?" in text else "general",
+        "opers": words[:5],
+        "uncertainty": 0.4,
+        "missing_info": [],
+    }

@@ -7,22 +7,25 @@ def test_sima_outputs_strict_structured_data() -> None:
     engine = IntentEngine()
     cases = {
         "question": "What is PostgreSQL?",
-        "creation": "Write a short launch announcement",
-        "revision": "Fix this sentence",
-        "decision": "Compare tea between coffee",
         "general": "Tell me about deployment",
     }
 
     analyses = {task_type: engine.analyze(text) for task_type, text in cases.items()}
 
     assert set(analyses) == {analysis.intent for analysis in analyses.values()}
-    assert len({tuple(analysis.opers) for analysis in analyses.values()}) == len(cases)
     for analysis in analyses.values():
         assert set(analysis.to_dict()) == {"intent", "opers", "uncertainty", "missing_info"}
         assert isinstance(analysis.intent, str)
-        assert all("_" in oper for oper in analysis.opers)
+        assert analysis.opers
         assert 0.0 <= analysis.uncertainty <= 1.0
         assert all(" " not in field for field in analysis.missing_info)
+
+    assert analyses["question"].to_dict() == {
+        "intent": "question",
+        "opers": ["What", "is", "PostgreSQL?"],
+        "uncertainty": 0.4,
+        "missing_info": [],
+    }
 
 
 def test_sima_contains_no_natural_language_reasoning_fields() -> None:

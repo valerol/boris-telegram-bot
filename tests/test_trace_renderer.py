@@ -24,9 +24,8 @@ def test_trace_renderer_uses_structured_sima_fields_only() -> None:
         {"allowed": True, "risk": "low", "reason": "allowed"},
     )
 
-    assert "- classify_decision" in output
-    assert "- uncertainty: 0.46" in output
-    assert "- missing info: decision_criteria" in output
-    assert "- gate: allowed" in output
+    assert "Intent: decision" in output
+    assert "Ops: classify_decision, extract_options" in output
+    assert "Uncertainty: 0.46" in output
+    assert "Risk: low" in output
     assert "unused narrative field" not in output
-

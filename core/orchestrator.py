@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from bois.gate import bois_gate
 from bois.guard import DecisionGate
-from boris.engine import ReasoningEngine, ReasoningFrame
+from boris.engine import ReasoningEngine, ReasoningFrame, boris_run
 from config.settings import Settings
 from memory.models import ChatMessage
 from memory.store import PostgresSessionStore
 from qa.validator import ResponseValidator
 from runtime.llm import LLMClient
-from sima.engine import IntentAnalysis, IntentEngine
-from trace.renderer import HumanTraceRenderer
+from sima.engine import IntentAnalysis, IntentEngine, sima_run
+from trace.renderer import HumanTraceRenderer, render_trace
 
 REFUSAL_TEXT = "I can’t proceed with this request."
 
@@ -103,7 +104,13 @@ class Orchestrator:
 
     def _safe_analyze(self, user_text: str) -> IntentAnalysis:
         try:
-            return self._analyzer.analyze(user_text)
+            parsed = sima_run(user_text)
+            return IntentAnalysis(
+                intent=str(parsed["intent"]),
+                opers=list(parsed["opers"]),
+                uncertainty=float(parsed["uncertainty"]),
+                missing_info=list(parsed["missing_info"]),
+            )
         except Exception:
             return IntentAnalysis(
                 intent="general",
@@ -114,7 +121,13 @@ class Orchestrator:
 
     def _safe_structure(self, analysis: IntentAnalysis, risk: str) -> ReasoningFrame:
         try:
-            return self._structurer.structure(analysis, risk)
+            structured = boris_run(analysis.to_dict())
+            return ReasoningFrame(
+                domain=str(structured["domain"]),
+                constraints=list(structured["constraints"]),
+                reasoning_frame="constraint_application",
+                user_visible_decision="",
+            )
         except Exception:
             return ReasoningFrame(
                 domain="General assistance",
@@ -142,3 +155,27 @@ class Orchestrator:
             return await self._llm.complete(user_text, history, analysis, frame, answer_only_retry=answer_only_retry)
         except Exception:
             return "I can help with this, but I need to keep the answer general because the answer source was unavailable."
+
+
+async def process_message(user_id: int, text: str, state: object, llm: LLMClient) -> str:
+    decision = bois_gate(text, state)
+
+    if not decision["allowed"]:
+        return REFUSAL_TEXT
+
+    sima = sima_run(text)
+    boris = boris_run(sima)
+    analysis = IntentAnalysis(
+        intent=str(sima["intent"]),
+        opers=list(sima["opers"]),
+        uncertainty=float(sima["uncertainty"]),
+        missing_info=list(sima["missing_info"]),
+    )
+    frame = ReasoningFrame(
+        domain=str(boris["domain"]),
+        constraints=list(boris["constraints"]),
+        reasoning_frame="constraint_application",
+        user_visible_decision="",
+    )
+    answer = await llm.complete(text, [], analysis, frame)
+    return render_trace(text, decision, sima, boris, answer)
