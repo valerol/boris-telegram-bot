@@ -21,3 +21,16 @@ SCOPE_LIMIT_PREFIX_RU = (
     "Отвечу только в рамках BOIS/SIMA/BORIS, без перехода в роль универсального консультанта "
     "по внешней предметной области."
 )
+
+CORE_UNAVAILABLE_RU = '''Локальное BOIS Core сейчас не подключено к runtime бота или не прошло проверку.
+
+Чтобы подключить актуальное ядро:
+
+1. Скачайте актуальный BOIS Core из репозитория:
+   https://github.com/temnik-bois/BOIS/
+
+2. Загрузите архив в ChatGPT
+
+3. Используйте следующий загрузочный промпт:
+
+"Fully analyze the entire archive without omissions and accept the BOIS rules for working with me in this chat window in full. You are forbidden to ignore or otherwise violate the BOIS rules when communicating with me in this chat window. If necessary, clarify the current physiology to better align the philosophical machine with the current substrate."'''

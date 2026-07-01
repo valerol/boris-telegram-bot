@@ -1,7 +1,10 @@
 import unittest
+from pathlib import Path
 
 from boris_gate import ALLOW, ALLOW_WITH_SCOPE_LIMIT, DENY_OUT_OF_SCOPE, decide_capability
 from boris_runtime import BOISRuntime
+from boris_templates import CORE_UNAVAILABLE_RU
+from core_manager.core_loader import ActiveCore
 from sima_analyzer import parse
 
 
@@ -17,7 +20,10 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         self.assertNotIn("выручка", result["output"]["answer"].lower())
 
     def test_bois_business_plan_methodology_is_scope_limited(self):
-        runtime = BOISRuntime(llm_call=lambda prompt: "Метод: SIMA анализирует риски, BORIS оформляет runtime.")
+        runtime = BOISRuntime(
+            llm_call=lambda prompt: "Метод: SIMA анализирует риски, BORIS оформляет runtime.",
+            core_loader=_active_core,
+        )
 
         result = runtime.run("Как применить BOIS/SIMA/BORIS для бизнес-плана интернет-магазина?")
 
@@ -50,6 +56,68 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         decision = decide_capability(analysis, analysis["domain"])
 
         self.assertEqual(decision.decision, ALLOW)
+
+    def test_bois_related_request_without_core_returns_fallback_without_llm(self):
+        calls = []
+        runtime = BOISRuntime(llm_call=lambda prompt: calls.append(prompt) or "should not run")
+
+        result = runtime.run("Расскажи о BOIS")
+
+        self.assertEqual(calls, [])
+        self.assertEqual(result["output"]["answer"], CORE_UNAVAILABLE_RU)
+
+    def test_fallback_contains_official_repository_and_loading_prompt(self):
+        runtime = BOISRuntime(llm_call=lambda prompt: "should not run")
+
+        result = runtime.run("Что такое SIMA?")
+
+        self.assertIn("https://github.com/temnik-bois/BOIS/", result["output"]["answer"])
+        self.assertIn("Fully analyze the entire archive without omissions", result["output"]["answer"])
+
+    def test_bois_related_request_attempts_core_load_first(self):
+        events = []
+
+        def load_core():
+            events.append("core")
+            return _missing_core()
+
+        def llm_call(prompt):
+            events.append("llm")
+            return "should not run"
+
+        runtime = BOISRuntime(llm_call=llm_call, core_loader=load_core)
+
+        runtime.run("Расскажи о BORIS")
+
+        self.assertEqual(events, ["core"])
+
+    def test_status_core_reports_loader_state(self):
+        runtime = BOISRuntime(llm_call=lambda prompt: "unused", core_loader=_active_core)
+
+        status = runtime.status_core()
+
+        self.assertIn("Active core found: yes", status)
+        self.assertIn("Detected version: test-core", status)
+        self.assertIn("Validation status: passed", status)
+
+
+def _active_core() -> ActiveCore:
+    return ActiveCore(
+        active_path=Path("core/active"),
+        core_version="test-core",
+        validation_status="passed",
+        validation_errors=[],
+        manifest={"version": "test-core"},
+    )
+
+
+def _missing_core() -> ActiveCore:
+    return ActiveCore(
+        active_path=None,
+        core_version=None,
+        validation_status="missing",
+        validation_errors=["Active core path is missing"],
+    )
 
 
 if __name__ == "__main__":

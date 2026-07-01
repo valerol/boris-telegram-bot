@@ -5,6 +5,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from core_manager.core_validator import validate_core_package
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CORE_ROOT = PROJECT_ROOT / "core"
@@ -16,6 +18,8 @@ ACTIVE_LINK = CORE_ROOT / "active"
 class ActiveCore:
     active_path: Path | None
     core_version: str | None
+    validation_status: str = "not_imported"
+    validation_errors: list[str] = field(default_factory=list)
     manifest: dict | None = None
     validation_report: dict | None = None
     machine_json: list[dict] = field(default_factory=list)
@@ -30,22 +34,48 @@ class ActiveCore:
 
     @property
     def available(self) -> bool:
-        return self.active_path is not None
+        return self.active_path is not None and self.validation_status == "passed"
+
+    @property
+    def detected_version(self) -> str | None:
+        return self.core_version
 
 
 def get_active_core() -> ActiveCore:
     registry = load_registry()
     active_container = _active_path_from_registry(registry)
     if active_container is None or not active_container.is_dir():
-        return ActiveCore(active_path=None, core_version=registry.get("active_version"))
+        return ActiveCore(
+            active_path=None,
+            core_version=registry.get("active_version"),
+            validation_status=registry.get("validation_status", "missing"),
+            validation_errors=["Active core path is missing"],
+        )
     active_path = _detect_package_root(active_container)
     if active_path is None:
-        return ActiveCore(active_path=None, core_version=registry.get("active_version"))
+        return ActiveCore(
+            active_path=active_container,
+            core_version=registry.get("active_version"),
+            validation_status="failed",
+            validation_errors=["Cannot detect native BOIS Core package root"],
+        )
+
+    validation = validate_core_package(active_path)
+    if not validation.ok:
+        return ActiveCore(
+            active_path=active_path,
+            core_version=registry.get("active_version"),
+            validation_status="failed",
+            validation_errors=validation.errors,
+            manifest=validation.manifest,
+        )
 
     return ActiveCore(
         active_path=active_path,
         core_version=registry.get("active_version"),
-        manifest=_read_json(active_path / "integrity" / "manifest.json"),
+        validation_status="passed",
+        validation_errors=[],
+        manifest=validation.manifest,
         validation_report=_read_json(active_path / "integrity" / "validation_report.json"),
         machine_json=[_read_json(path) for path in sorted((active_path / "core").glob("*.machine.json"))],
         active_rules=_read_csv(active_path / "tables" / "active_rules.csv"),

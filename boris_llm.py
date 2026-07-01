@@ -17,6 +17,9 @@ def build_llm_prompt(user_text: str, analysis: dict, gate_decision: dict) -> str
     return f"""BORIS Support identity:
 {json.dumps(identity_payload(), ensure_ascii=False, indent=2)}
 
+Native BOIS Core status:
+{json.dumps(analysis.get("active_core", {}), ensure_ascii=False, indent=2)}
+
 SIMA analysis:
 {json.dumps(analysis, ensure_ascii=False, indent=2)}
 
@@ -26,7 +29,11 @@ Capability gate decision:
 User request:
 {user_text}
 
-Answer only inside the allowed BORIS Support scope.
+You are BORIS Support.
+The loaded native BOIS Core is the canonical source for BOIS/SIMA/BORIS knowledge.
+Do not invent BOIS/SIMA/BORIS rules.
+Do not reconstruct missing BOIS/SIMA/BORIS concepts from memory.
+Answer only within BORIS Support scope.
 If the gate decision limits scope, stay within BOIS/SIMA/BORIS methodology and do not perform generic expert work in the external domain.
 Do not expose internal runtime fields or raw JSON unless the user explicitly asks for that format.
 """
@@ -43,8 +50,10 @@ def call_llm(prompt: str):
                 {
                     "role": "system",
                     "content": (
-                        "You are the free reasoning engine inside BOIS Bot. "
-                        "Use expert reasoning internally and answer the user directly inside BORIS Support scope. "
+                        "You are BORIS Support. "
+                        "Use the loaded native BOIS Core as the canonical source for BOIS/SIMA/BORIS knowledge. "
+                        "Do not invent BOIS/SIMA/BORIS rules. "
+                        "Stay within BORIS Support scope. "
                         "Do not expose internal runtime fields or raw JSON unless the user explicitly asks for that format."
                     ),
                 },

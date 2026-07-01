@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 from boris_runtime import BOISRuntime
 
@@ -26,9 +26,19 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def status_core(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.message is None:
+        return
+
+    await update.message.reply_text(runtime.status_core())
+
+
 def main():
 
     app = Application.builder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("status_core", status_core))
 
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle)

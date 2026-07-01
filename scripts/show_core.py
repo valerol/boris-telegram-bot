@@ -17,7 +17,8 @@ def main() -> None:
         "active_core": {
             "available": active_core.available,
             "active_path": str(active_core.active_path) if active_core.active_path else None,
-            "core_version": active_core.core_version,
+            "detected_version": active_core.detected_version,
+            "validation_status": active_core.validation_status,
             "machine_json_count": len(active_core.machine_json),
             "active_rules_count": len(active_core.active_rules),
             "stop_signals_count": len(active_core.stop_signals),

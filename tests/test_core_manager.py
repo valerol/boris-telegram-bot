@@ -45,6 +45,33 @@ class CoreManagerTest(unittest.TestCase):
             self.assertFalse(active_core.available)
             self.assertTrue(registry["validation_errors"])
 
+    def test_loader_reports_invalid_active_core_unavailable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            core_root = root / "core"
+            invalid_package = core_root / "versions" / "bad" / "Invalid_Core"
+            (invalid_package / "integrity").mkdir(parents=True)
+            (invalid_package / "integrity" / "manifest.json").write_text("{}", encoding="utf-8")
+            (invalid_package / "load_order.txt").write_text("", encoding="utf-8")
+            (core_root / "registry.json").write_text(
+                json.dumps(
+                    {
+                        "active_version": "bad",
+                        "active_path": str(core_root / "versions" / "bad"),
+                        "validation_status": "passed",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (core_root / "active").symlink_to(Path("versions") / "bad")
+
+            with _patched_core(root):
+                active_core = core_loader.get_active_core()
+
+            self.assertFalse(active_core.available)
+            self.assertEqual(active_core.validation_status, "failed")
+            self.assertTrue(active_core.validation_errors)
+
     def test_hash_mismatch_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
