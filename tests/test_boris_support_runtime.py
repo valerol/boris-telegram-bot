@@ -59,7 +59,10 @@ class BORISSupportRuntimeTest(unittest.TestCase):
 
     def test_bois_related_request_without_core_returns_fallback_without_llm(self):
         calls = []
-        runtime = BOISRuntime(llm_call=lambda prompt: calls.append(prompt) or "should not run")
+        runtime = BOISRuntime(
+            llm_call=lambda prompt: calls.append(prompt) or "should not run",
+            core_loader=_missing_core,
+        )
 
         result = runtime.run("Расскажи о BOIS")
 
@@ -67,7 +70,7 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         self.assertEqual(result["output"]["answer"], CORE_UNAVAILABLE_RU)
 
     def test_fallback_contains_official_repository_and_loading_prompt(self):
-        runtime = BOISRuntime(llm_call=lambda prompt: "should not run")
+        runtime = BOISRuntime(llm_call=lambda prompt: "should not run", core_loader=_missing_core)
 
         result = runtime.run("Что такое SIMA?")
 
