@@ -1,2 +1,0 @@
-"""Hidden decision gate."""
-

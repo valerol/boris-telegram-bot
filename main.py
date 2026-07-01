@@ -1,5 +1,12 @@
-from bot.main import main
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
-if __name__ == "__main__":
-    main()
+from bois import run
+import json
+
+while True:
+    user_input = input("USER> ")
+    result = run(user_input)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
