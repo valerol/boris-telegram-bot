@@ -14,6 +14,9 @@ runtime = BOISRuntime()
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    if update.message is None or update.message.text is None:
+        return
+
     user_text = update.message.text
 
     result = runtime.run(user_text)

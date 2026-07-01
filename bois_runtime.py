@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from bois import run as run_bois
+
 load_dotenv()  # ← ОБЯЗАТЕЛЬНО здесь
 
 def get_client():
@@ -9,6 +11,9 @@ def get_client():
 
 
 class BOISRuntime:
+
+    def run(self, user_text: str):
+        return run_bois(user_text)
 
     def call_llm(self, parsed):
 
