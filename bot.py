@@ -1,31 +1,38 @@
 import os
-import requests
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
+from bois_runtime import BOISRuntime
+
 load_dotenv()
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-API_URL = "http://127.0.0.1:8000/process"  # если API локально
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+runtime = BOISRuntime()
+
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_text = update.message.text
 
-    response = requests.post(API_URL, json={
-        "input": user_text
-    })
+    result = runtime.run(user_text)
 
-    await update.message.reply_text(str(response.json()))
+    await update.message.reply_text(
+        result["output"]["answer"]
+    )
+
 
 def main():
 
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle)
+    )
 
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
