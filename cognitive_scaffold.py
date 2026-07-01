@@ -1,6 +1,8 @@
 import json
 import re
 
+from formatter import EMPTY_PRESENTATION, present_answer
+
 
 TEXT_KEYS = (
     "answer",
@@ -14,7 +16,9 @@ TEXT_KEYS = (
 
 
 def scaffold_llm_output(user_input: str, llm_output: str) -> dict:
-    answer = _clean_answer(llm_output)
+    answer = present_answer(llm_output)
+    if answer.strip() == user_input.strip():
+        answer = EMPTY_PRESENTATION
     return {
         "input": {
             "text": user_input,
