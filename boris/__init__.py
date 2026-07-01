@@ -1,0 +1,2 @@
+"""Hidden domain structuring."""
+

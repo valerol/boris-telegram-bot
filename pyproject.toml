@@ -1,0 +1,32 @@
+[project]
+name = "boris-telegram-bot"
+version = "0.1.0"
+description = "Production-ready Telegram AI bot with hidden structured reasoning and human-readable traces."
+requires-python = ">=3.11"
+dependencies = [
+  "asyncpg>=0.29.0",
+  "openai>=1.40.0",
+  "pydantic>=2.7.0",
+  "pydantic-settings>=2.3.0",
+  "python-telegram-bot>=21.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+  "pytest-asyncio>=0.23.0",
+]
+
+[project.scripts]
+reasoning-telegram-bot = "bot.telegram_adapter:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["bois", "boris", "bot", "config", "core", "memory", "qa", "runtime", "sima"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
