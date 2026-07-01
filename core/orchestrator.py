@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from bois.gate import bois_gate
 from bois.guard import DecisionGate
 from boris.engine import ReasoningEngine, ReasoningFrame, boris_run
@@ -12,6 +14,7 @@ from sima.engine import IntentAnalysis, IntentEngine, sima_run
 from trace.renderer import HumanTraceRenderer, render_trace
 
 REFUSAL_TEXT = "I can’t proceed with this request."
+LOGGER = logging.getLogger(__name__)
 
 
 class Orchestrator:
@@ -38,7 +41,7 @@ class Orchestrator:
     async def handle_message(self, user_id: int, chat_id: int, user_text: str) -> str:
         session = await self._store.get(user_id=user_id, chat_id=chat_id)
 
-        gate_result = self._gate.evaluate(user_text)
+        gate_result = self._gate.evaluate(user_text, session)
         session.risk_level = gate_result.risk
         if not gate_result.allowed:
             session.execution_traces.append(
@@ -52,6 +55,7 @@ class Orchestrator:
             await self._store.save(session.trimmed(self._settings.max_history_messages))
             return REFUSAL_TEXT
 
+        LOGGER.debug("PIPELINE_ACTIVE: BOIS -> SIMA -> BORIS -> LLM")
         analysis = self._safe_analyze(user_text)
         frame = self._safe_structure(analysis, gate_result.risk)
 
@@ -101,13 +105,7 @@ class Orchestrator:
 
     def _safe_analyze(self, user_text: str) -> IntentAnalysis:
         try:
-            parsed = sima_run(user_text)
-            return IntentAnalysis(
-                intent=str(parsed["intent"]),
-                opers=list(parsed["opers"]),
-                uncertainty=float(parsed["uncertainty"]),
-                missing_info=list(parsed["missing_info"]),
-            )
+            return self._analyzer.analyze(user_text)
         except Exception:
             return IntentAnalysis(
                 intent="explanation_request",

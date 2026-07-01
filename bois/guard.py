@@ -47,7 +47,7 @@ class DecisionGate:
 
     _sensitive_terms = ("medical", "legal", "financial", "investment")
 
-    def evaluate(self, user_text: str) -> GateResult:
+    def evaluate(self, user_text: str, state: object | None = None) -> GateResult:
         normalized = " ".join(user_text.lower().split())
         if len(user_text.strip()) < 2:
             return GateResult(allowed=False, risk="low", reason="empty")
@@ -59,4 +59,4 @@ class DecisionGate:
 
 
 def bois_gate(text: str, state: object | None = None) -> dict[str, bool | str]:
-    return DecisionGate().evaluate(text).to_dict()
+    return DecisionGate().evaluate(text, state).to_dict()

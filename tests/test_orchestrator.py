@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from config.settings import Settings
 from core.orchestrator import REFUSAL_TEXT, Orchestrator
+from bois.guard import GateResult
+from boris.engine import ReasoningFrame
 from memory.models import SessionState
 from qa.validator import REQUIRED_HEADINGS
+from sima.engine import IntentAnalysis
 
 
 class FakeStore:
@@ -58,6 +63,55 @@ class ExplodingStructurer:
         raise AssertionError("Structurer must not run when gate blocks.")
 
 
+class RecordingGate:
+    def __init__(self, order: list[str]) -> None:
+        self.order = order
+        self.state_seen = None
+
+    def evaluate(self, user_text, state=None):
+        self.order.append("bois")
+        self.state_seen = state
+        return GateResult(allowed=True, risk="low", reason="ok")
+
+
+class RecordingAnalyzer:
+    def __init__(self, order: list[str]) -> None:
+        self.order = order
+
+    def analyze(self, user_text):
+        self.order.append("sima")
+        return IntentAnalysis(
+            intent="explanation_request",
+            opers=["explain"],
+            uncertainty=0.15,
+            missing_info=[],
+        )
+
+
+class RecordingStructurer:
+    def __init__(self, order: list[str]) -> None:
+        self.order = order
+
+    def structure(self, analysis, risk):
+        self.order.append("boris")
+        return ReasoningFrame(
+            domain="explanation",
+            constraints=["define terms"],
+            reasoning_frame="constraint_application",
+            user_visible_decision="",
+        )
+
+
+class RecordingLLM(FakeLLM):
+    def __init__(self, order: list[str]) -> None:
+        super().__init__("Layered answer.")
+        self.order = order
+
+    async def complete(self, user_text, history, analysis, reasoning_frame, answer_only_retry=False):
+        self.order.append("llm")
+        return await super().complete(user_text, history, analysis, reasoning_frame, answer_only_retry)
+
+
 async def test_response_uses_required_human_trace_format() -> None:
     store = FakeStore()
     llm = FakeLLM("Use concise wording and keep the structure readable.")
@@ -77,6 +131,29 @@ async def test_response_uses_required_human_trace_format() -> None:
     assert store.session.last_reasoning_context["intent"]["intent"] == "creation_request"
     assert store.session.state_snapshots
     assert store.session.execution_traces[-1]["steps"] == ["gate", "intent", "structure", "llm", "trace"]
+
+
+async def test_pipeline_calls_gate_first_with_session_and_preserves_order(caplog) -> None:
+    order: list[str] = []
+    store = FakeStore()
+    gate = RecordingGate(order)
+    llm = RecordingLLM(order)
+    caplog.set_level(logging.DEBUG, logger="core.orchestrator")
+    orchestrator = Orchestrator(
+        Settings(),
+        store,
+        llm,
+        gate=gate,
+        analyzer=RecordingAnalyzer(order),
+        structurer=RecordingStructurer(order),
+    )
+
+    response = await orchestrator.handle_message(1, 10, "Расскажи о BOIS")
+
+    assert order == ["bois", "sima", "boris", "llm"]
+    assert gate.state_seen is store.session
+    assert "Layered answer." in response
+    assert "PIPELINE_ACTIVE: BOIS -> SIMA -> BORIS -> LLM" in caplog.text
 
 
 async def test_blocked_request_never_calls_llm() -> None:
