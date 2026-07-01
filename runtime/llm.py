@@ -17,6 +17,7 @@ class LLMClient(Protocol):
         history: list[ChatMessage],
         analysis: IntentAnalysis,
         reasoning_frame: ReasoningFrame,
+        answer_only_retry: bool = False,
     ) -> str:
         ...
 
@@ -36,18 +37,30 @@ class OpenAILLMClient:
         history: list[ChatMessage],
         analysis: IntentAnalysis,
         reasoning_frame: ReasoningFrame,
+        answer_only_retry: bool = False,
     ) -> str:
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are a concise, careful assistant. Return only the final answer body, "
-                    "without headings, hidden implementation terms, JSON, logs, or schemas."
+                    "You are a concise, careful assistant. Generate only the direct answer text. "
+                    "Do not include headings, labels, sections, reasoning explanations, JSON, logs, or schemas. "
+                    "Never write 'What I understood', 'How I analyzed it', 'How I decided to proceed', or 'Answer'."
                 ),
             }
         ]
+        if answer_only_retry:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "Answer only, no structure.",
+                }
+            )
         for item in history[-10:]:
-            messages.append({"role": item.role, "content": item.content})
+            if item.role == "user":
+                messages.append({"role": item.role, "content": item.content})
+            elif item.role == "assistant":
+                messages.append({"role": item.role, "content": _answer_part(item.content)})
         messages.append(
             {
                 "role": "user",
@@ -69,3 +82,10 @@ class OpenAILLMClient:
             temperature=0.2,
         )
         return response.choices[0].message.content or ""
+
+
+def _answer_part(content: str) -> str:
+    marker = "💬 Answer"
+    if marker in content:
+        return content.split(marker, 1)[1].strip()
+    return content.strip()

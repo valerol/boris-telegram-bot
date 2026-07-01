@@ -23,14 +23,23 @@ class FakeStore:
 
 class FakeLLM:
     def __init__(self, answer: str = "Here is the helpful answer.") -> None:
-        self.answer = answer
+        self.answers = [answer]
         self.calls = 0
+        self.retry_flags = []
 
-    async def complete(self, user_text, history, analysis, reasoning_frame):
+    async def complete(self, user_text, history, analysis, reasoning_frame, answer_only_retry=False):
         self.calls += 1
+        self.retry_flags.append(answer_only_retry)
         self.analysis = analysis
         self.reasoning_frame = reasoning_frame
-        return self.answer
+        index = min(self.calls - 1, len(self.answers) - 1)
+        return self.answers[index]
+
+
+class SequenceLLM(FakeLLM):
+    def __init__(self, answers: list[str]) -> None:
+        super().__init__(answers[0])
+        self.answers = answers
 
 
 class ExplodingAnalyzer:
@@ -98,6 +107,25 @@ async def test_invalid_generated_text_gets_safe_fallback_after_retry() -> None:
     assert "JSON" not in response
     assert "pipeline" not in response
     assert "I can help with this" in response
+
+
+async def test_structured_llm_answer_is_rejected_and_regenerated() -> None:
+    store = FakeStore()
+    llm = SequenceLLM(
+        [
+            "🧭 What I understood\nA structure that must not come from the model.\n\n💬 Answer\nBad.",
+            "This is the direct answer only.",
+        ]
+    )
+    orchestrator = Orchestrator(Settings(), store, llm)
+
+    response = await orchestrator.handle_message(1, 10, "What is the next step?")
+
+    assert llm.calls == 2
+    assert llm.retry_flags == [False, True]
+    assert response.count("🧭 What I understood") == 1
+    assert "This is the direct answer only." in response
+    assert "A structure that must not come from the model" not in response
 
 
 class BrokenAnalyzer:

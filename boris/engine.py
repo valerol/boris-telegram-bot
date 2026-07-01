@@ -36,7 +36,8 @@ class ReasoningEngine:
         constraints = [
             "Answer in natural language.",
             "Do not reveal hidden implementation details.",
-            "Use the required four-section response format.",
+            "Return only the direct answer text.",
+            "Do not include headings, labels, or explanation sections.",
         ]
         if risk != "low":
             constraints.append("Keep the answer cautious and avoid overclaiming.")

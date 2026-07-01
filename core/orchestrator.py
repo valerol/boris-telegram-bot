@@ -55,6 +55,19 @@ class Orchestrator:
         frame = self._safe_structure(analysis, gate_result.risk)
 
         answer = await self._safe_complete(user_text, session.conversation_history, analysis, frame)
+        if not self._validator.is_answer_only(answer):
+            answer = await self._safe_complete(
+                user_text,
+                session.conversation_history,
+                analysis,
+                frame,
+                answer_only_retry=True,
+            )
+        if not self._validator.is_answer_only(answer):
+            answer = (
+                "I can help with this, but I need to keep the answer general because the generated answer "
+                "did not match the required response boundary."
+            )
         rendered = self._renderer.render(analysis, frame, answer)
 
         if not self._validator.is_valid(rendered):
@@ -114,7 +127,8 @@ class Orchestrator:
                 constraints=[
                     "Answer in natural language.",
                     "Do not reveal hidden implementation details.",
-                    "Use the required four-section response format.",
+                    "Return only the direct answer text.",
+                    "Do not include headings, labels, or explanation sections.",
                 ],
                 reasoning_frame="respond directly and keep assumptions visible",
                 user_visible_decision=(
@@ -128,8 +142,9 @@ class Orchestrator:
         history: list[ChatMessage],
         analysis: IntentAnalysis,
         frame: ReasoningFrame,
+        answer_only_retry: bool = False,
     ) -> str:
         try:
-            return await self._llm.complete(user_text, history, analysis, frame)
+            return await self._llm.complete(user_text, history, analysis, frame, answer_only_retry=answer_only_retry)
         except Exception:
             return "I can help with this, but I need to keep the answer general because the answer source was unavailable."

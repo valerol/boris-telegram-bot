@@ -18,6 +18,17 @@ FORBIDDEN_VISIBLE_TERMS = (
     "schema",
 )
 
+FORBIDDEN_ANSWER_MARKERS = (
+    "🧭 What I understood",
+    "🧠 How I analyzed it",
+    "⚙️ How I decided to proceed",
+    "💬 Answer",
+    "What I understood",
+    "How I analyzed",
+    "How I decided",
+    "Answer:",
+)
+
 
 class ResponseValidator:
     def is_valid(self, text: str) -> bool:
@@ -36,3 +47,9 @@ class ResponseValidator:
         upper_text = text.upper()
         return any(term.upper() in upper_text for term in FORBIDDEN_VISIBLE_TERMS)
 
+    def is_answer_only(self, text: str) -> bool:
+        return not self.has_answer_structure(text)
+
+    def has_answer_structure(self, text: str) -> bool:
+        upper_text = text.upper()
+        return any(marker.upper() in upper_text for marker in FORBIDDEN_ANSWER_MARKERS)
