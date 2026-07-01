@@ -1,4 +1,4 @@
-from formatter import EMPTY_PRESENTATION, present_answer
+from boris_formatter import EMPTY_PRESENTATION, present_answer
 
 
 def scaffold_llm_output(user_input: str, llm_output: str, parsed: dict | None = None) -> dict:

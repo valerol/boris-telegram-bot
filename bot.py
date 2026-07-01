@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
-from bois_runtime import BOISRuntime
+from boris_runtime import BOISRuntime
 
 load_dotenv()
 

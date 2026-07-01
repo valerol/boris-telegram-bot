@@ -1,9 +1,9 @@
 import json
 
-from bois_context import BOIS_CONTEXT
-from cognitive_scaffold import scaffold_llm_output
-from llm import call_llm
-from parser import parse
+from bois_core import BOIS_CONTEXT
+from boris_llm import call_llm
+from boris_protocol import scaffold_llm_output
+from sima_analyzer import parse
 
 
 LLM_ERROR_MESSAGE = "LLM call failed. Please check OPENAI_API_KEY and runtime logs."
