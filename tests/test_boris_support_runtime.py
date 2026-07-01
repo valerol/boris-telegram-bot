@@ -103,6 +103,36 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         self.assertIn("Detected version: test-core", status)
         self.assertIn("Validation status: passed", status)
 
+    def test_available_core_context_is_preserved_in_analysis(self):
+        runtime = BOISRuntime(llm_call=lambda prompt: "Core-aware answer", core_loader=_active_core)
+
+        result = runtime.run("Расскажи о BOIS")
+        active_core = result["input"]["active_core"]
+
+        self.assertTrue(active_core["available"])
+        self.assertEqual(active_core["surface_contract"]["mode"], "canonical-test-surface")
+        self.assertEqual(active_core["active_rules"][0]["rule"], "canonical-test-rule")
+        self.assertEqual(active_core["stop_signals"][0]["signal"], "canonical-test-stop")
+        self.assertEqual(active_core["procedures"][0]["procedure"], "canonical-test-procedure")
+        self.assertEqual(active_core["criteria"][0]["criterion"], "canonical-test-criterion")
+        self.assertIn("canonical-test-machine", str(active_core["machine_json"][0]["scalar_snippets"]))
+        self.assertIsNotNone(active_core["identity"]["loaded_surface_sha256"])
+
+    def test_prompt_receives_identifiable_core_content_and_no_fallback(self):
+        prompts = []
+        runtime = BOISRuntime(
+            llm_call=lambda prompt: prompts.append(prompt) or "Core-aware answer",
+            core_loader=_active_core,
+        )
+
+        result = runtime.run("Расскажи о BOIS")
+
+        self.assertNotEqual(result["output"]["answer"], CORE_UNAVAILABLE_RU)
+        self.assertEqual(len(prompts), 1)
+        self.assertIn("canonical-test-surface", prompts[0])
+        self.assertIn("canonical-test-rule", prompts[0])
+        self.assertIn(result["input"]["active_core"]["identity"]["loaded_surface_sha256"], prompts[0])
+
 
 def _active_core() -> ActiveCore:
     return ActiveCore(
@@ -111,6 +141,15 @@ def _active_core() -> ActiveCore:
         validation_status="passed",
         validation_errors=[],
         manifest={"version": "test-core"},
+        machine_json=[{"machine": "canonical-test-machine"}],
+        active_rules=[{"id": "rule-1", "rule": "canonical-test-rule"}],
+        stop_signals=[{"id": "stop-1", "signal": "canonical-test-stop"}],
+        procedures=[{"id": "procedure-1", "procedure": "canonical-test-procedure"}],
+        criteria=[{"id": "criterion-1", "criterion": "canonical-test-criterion"}],
+        surface_contract={"mode": "canonical-test-surface"},
+        conflict_policy={"policy": "canonical-test-conflict"},
+        language_policy={"language": "canonical-test-language"},
+        load_order=["core/main.machine.json"],
     )
 
 

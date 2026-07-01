@@ -3,6 +3,7 @@ from boris_gate import ALLOW_WITH_SCOPE_LIMIT, CLARIFY, DENY_OUT_OF_SCOPE, decid
 from boris_llm import build_llm_prompt, call_llm
 from boris_protocol import scaffold_llm_output
 from boris_templates import CLARIFY_RU, CORE_UNAVAILABLE_RU, OUT_OF_SCOPE_RU, SCOPE_LIMIT_PREFIX_RU
+from core_manager.core_context import build_core_context
 from core_manager.core_loader import get_active_core
 from sima_analyzer import parse
 
@@ -19,13 +20,7 @@ class BOISRuntime:
         print("BOIS_RUNTIME_START")
         analysis = parse(text)
         active_core = self._core_loader()
-        analysis["active_core"] = {
-            "available": active_core.available,
-            "version": active_core.detected_version,
-            "path": str(active_core.active_path) if active_core.active_path else None,
-            "validation_status": active_core.validation_status,
-            "validation_errors": active_core.validation_errors,
-        }
+        analysis["active_core"] = build_core_context(active_core)
 
         if _requires_native_core(analysis) and not active_core.available:
             return _deterministic_output(analysis, CORE_UNAVAILABLE_RU)

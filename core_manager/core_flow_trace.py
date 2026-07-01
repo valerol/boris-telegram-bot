@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
-from pathlib import Path
 
 from boris_domain import resolve_domain
 from boris_formatter import present_answer
 from boris_gate import decide_capability
 from boris_llm import build_llm_prompt
 from boris_protocol import scaffold_llm_output
+from core_manager.core_context import build_core_context, hash_core_package, hash_json, loaded_core_surface
 from core_manager.core_loader import ActiveCore, get_active_core
 from sima_analyzer import parse
 
@@ -32,8 +31,8 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
     active_core = get_active_core()
     identity = _core_identity(active_core)
     analysis = parse(user_text)
-    active_core_summary = _runtime_core_summary(active_core)
-    analysis["active_core"] = active_core_summary
+    active_core_context = build_core_context(active_core)
+    analysis["active_core"] = active_core_context
 
     stages = [
         _stage(
@@ -55,11 +54,11 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
         _stage(
             name='boris_runtime.analysis["active_core"]',
             carrier="runtime analysis dict",
-            state="reduced" if active_core.available else "lost",
+            state="transformed" if active_core.available else "lost",
             identity=identity,
-            evidence=active_core_summary,
-            identity_assertable=_contains_identity(active_core_summary, identity),
-            notes="Runtime keeps availability/version/path/status/errors, not manifest, machine JSON, tables, policies, or package digest.",
+            evidence=_context_evidence(active_core_context, identity),
+            identity_assertable=_contains_identity(active_core_context, identity),
+            notes="Runtime carries structured native core context with policies, tables, load order, selected machine JSON, and identity digests.",
         ),
     ]
 
@@ -116,15 +115,15 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
         _stage(
             name="boris_gate.decide_capability",
             carrier="gate decision + analysis dict",
-            state="reduced" if active_core.available else "lost",
+            state="transformed" if active_core.available else "lost",
             identity=identity,
             evidence={
                 "decision": gate_decision.decision,
                 "reason": gate_decision.reason,
-                "analysis_active_core": active_core_summary,
+                "analysis_active_core": _context_evidence(active_core_context, identity),
             },
-            identity_assertable=_contains_identity(active_core_summary, identity),
-            notes="Gate receives the reduced active_core summary indirectly through analysis.",
+            identity_assertable=_contains_identity(active_core_context, identity),
+            notes="Gate receives the structured active_core context indirectly through analysis.",
         ),
         _stage(
             name="boris_llm.build_llm_prompt",
@@ -138,11 +137,13 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
                 "contains_loaded_surface_sha256": _contains_text(prompt, identity.loaded_surface_sha256),
                 "contains_manifest": _contains_json_fragment(prompt, active_core.manifest),
                 "contains_machine_json": _contains_json_fragment(prompt, active_core.machine_json),
+                "contains_surface_contract_value": _contains_any_value(prompt, active_core.surface_contract),
+                "contains_active_rule_value": _contains_any_value(prompt, active_core.active_rules),
                 "prompt_length": len(prompt),
             },
             identity_assertable=_contains_text(prompt, identity.package_sha256)
             or _contains_text(prompt, identity.loaded_surface_sha256),
-            notes="Prompt receives runtime metadata but not a verifiable native core identity digest.",
+            notes="Prompt receives structured active_core context plus verifiable native core identity digests.",
         ),
         _stage(
             name="runtime LLM boundary",
@@ -224,31 +225,9 @@ def _requires_native_core(analysis: dict) -> bool:
     )
 
 
-def _runtime_core_summary(active_core: ActiveCore) -> dict:
-    return {
-        "available": active_core.available,
-        "version": active_core.detected_version,
-        "path": str(active_core.active_path) if active_core.active_path else None,
-        "validation_status": active_core.validation_status,
-        "validation_errors": active_core.validation_errors,
-    }
-
-
 def _core_identity(active_core: ActiveCore) -> CoreIdentity:
-    package_digest, file_count = _hash_directory(active_core.active_path)
-    loaded_surface = {
-        "manifest": active_core.manifest,
-        "validation_report": active_core.validation_report,
-        "machine_json": active_core.machine_json,
-        "active_rules": active_core.active_rules,
-        "stop_signals": active_core.stop_signals,
-        "procedures": active_core.procedures,
-        "criteria": active_core.criteria,
-        "surface_contract": active_core.surface_contract,
-        "conflict_policy": active_core.conflict_policy,
-        "language_policy": active_core.language_policy,
-        "load_order": active_core.load_order,
-    }
+    package_digest, file_count = hash_core_package(active_core.active_path)
+    loaded_surface = loaded_core_surface(active_core)
     return CoreIdentity(
         available=active_core.available,
         root_path=str(active_core.active_path) if active_core.active_path else None,
@@ -256,29 +235,8 @@ def _core_identity(active_core: ActiveCore) -> CoreIdentity:
         validation_status=active_core.validation_status,
         file_count=file_count,
         package_sha256=package_digest,
-        loaded_surface_sha256=_hash_json(loaded_surface) if active_core.available else None,
+        loaded_surface_sha256=hash_json(loaded_surface) if active_core.available else None,
     )
-
-
-def _hash_directory(root: Path | None) -> tuple[str | None, int]:
-    if root is None or not root.is_dir():
-        return None, 0
-
-    digest = hashlib.sha256()
-    file_count = 0
-    for path in sorted(item for item in root.rglob("*") if item.is_file()):
-        relative_path = path.relative_to(root).as_posix()
-        digest.update(relative_path.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-        file_count += 1
-    return digest.hexdigest(), file_count
-
-
-def _hash_json(value) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def _stage(
@@ -323,6 +281,26 @@ def _prompt_core_state(prompt: str, identity: CoreIdentity) -> str:
     return "lost"
 
 
+def _context_evidence(context: dict, identity: CoreIdentity) -> dict:
+    return {
+        "available": context.get("available"),
+        "version": context.get("version"),
+        "path": context.get("path"),
+        "validation_status": context.get("validation_status"),
+        "has_load_order": bool(context.get("load_order")),
+        "has_surface_contract": bool(context.get("surface_contract")),
+        "has_conflict_policy": bool(context.get("conflict_policy")),
+        "has_language_policy": bool(context.get("language_policy")),
+        "active_rules_count": len(context.get("active_rules") or []),
+        "stop_signals_count": len(context.get("stop_signals") or []),
+        "procedures_count": len(context.get("procedures") or []),
+        "criteria_count": len(context.get("criteria") or []),
+        "machine_json_count": len(context.get("machine_json") or []),
+        "contains_package_sha256": _contains_identity_value(context, identity.package_sha256),
+        "contains_loaded_surface_sha256": _contains_identity_value(context, identity.loaded_surface_sha256),
+    }
+
+
 def _contains_json_fragment(text: str, value) -> bool:
     if not value:
         return False
@@ -331,6 +309,30 @@ def _contains_json_fragment(text: str, value) -> bool:
 
 def _contains_text(container: str, needle: str | None) -> bool:
     return bool(needle and needle in container)
+
+
+def _contains_identity_value(value, needle: str | None) -> bool:
+    return _contains_text(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str), needle)
+
+
+def _contains_any_value(container: str, value) -> bool:
+    for item in _scalar_values(value):
+        if item and item in container:
+            return True
+    return False
+
+
+def _scalar_values(value):
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _scalar_values(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _scalar_values(item)
+    elif isinstance(value, (str, int, float, bool)):
+        text = str(value)
+        if len(text) >= 3:
+            yield text
 
 
 def _first_identity_loss(stages: list[dict]) -> str | None:

@@ -17,7 +17,7 @@ def build_llm_prompt(user_text: str, analysis: dict, gate_decision: dict) -> str
     return f"""BORIS Support identity:
 {json.dumps(identity_payload(), ensure_ascii=False, indent=2)}
 
-Native BOIS Core status:
+Native BOIS Core context:
 {json.dumps(analysis.get("active_core", {}), ensure_ascii=False, indent=2)}
 
 SIMA analysis:
