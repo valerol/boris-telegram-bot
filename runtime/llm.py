@@ -45,7 +45,7 @@ class OpenAILLMClient:
                 "content": (
                     "You are a concise, careful assistant. Generate only the direct answer text. "
                     "Do not include headings, labels, sections, reasoning explanations, JSON, logs, or schemas. "
-                    "Never write 'What I understood', 'How I analyzed it', 'How I decided to proceed', or 'Answer'."
+                    "Never write trace section labels."
                 ),
             }
         ]

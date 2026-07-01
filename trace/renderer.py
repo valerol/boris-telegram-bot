@@ -4,11 +4,11 @@ from boris.engine import ReasoningFrame
 from sima.engine import IntentAnalysis
 
 INTENT_SUMMARIES = {
-    "question": "The request is a question that needs a direct answer.",
-    "creation": "The request asks for new content to be drafted.",
-    "revision": "The request asks for existing material to be improved.",
-    "decision": "The request asks for options to be weighed.",
-    "general": "The request is open-ended and needs a direct response.",
+    "question": "Intent class: question.",
+    "explanation_request": "Intent class: explanation_request.",
+    "creation_request": "Intent class: creation_request.",
+    "decision_request": "Intent class: decision_request.",
+    "system_query": "Intent class: system_query.",
 }
 
 
@@ -21,15 +21,18 @@ def render_trace(
 ) -> str:
     return f"""
 🧭 What I understood
-Intent: {sima["intent"]}
+{INTENT_SUMMARIES.get(str(sima["intent"]), INTENT_SUMMARIES["explanation_request"])}
 
 🧠 How I analyzed it
-Ops: {", ".join(str(oper) for oper in sima["opers"])}
-Uncertainty: {sima["uncertainty"]}
+- intent: {sima["intent"]}
+- opers: {", ".join(str(oper) for oper in sima["opers"])}
+- uncertainty: {sima["uncertainty"]}
+- missing_info: {", ".join(str(field) for field in sima["missing_info"]) or "none"}
 
 ⚙️ How I decided to proceed
-Risk: {bois["risk"]}
-Constraints: {", ".join(str(constraint) for constraint in boris["constraints"])}
+- gate: {"allowed" if bois["allowed"] else "blocked"}
+- risk: {bois["risk"]}
+- constraints: {", ".join(str(constraint) for constraint in boris["constraints"])}
 
 💬 Answer
 {answer}
@@ -64,12 +67,12 @@ class HumanTraceRenderer:
         return self.render(
             analysis,
             frame,
-            "I can help with this, but I need to keep the answer general because the available context is limited.",
+            "Answer unavailable.",
             gate,
         )
 
     def _understood(self, analysis: IntentAnalysis) -> str:
-        return INTENT_SUMMARIES.get(analysis.intent, INTENT_SUMMARIES["general"])
+        return INTENT_SUMMARIES.get(analysis.intent, INTENT_SUMMARIES["explanation_request"])
 
     def _analysis(self, analysis: IntentAnalysis) -> str:
         missing = ", ".join(analysis.missing_info) if analysis.missing_info else "none"

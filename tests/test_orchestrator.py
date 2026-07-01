@@ -72,9 +72,9 @@ async def test_response_uses_required_human_trace_format() -> None:
     assert "BORIS" not in response
     assert llm.calls == 1
     assert llm.analysis.opers
-    assert llm.reasoning_frame.to_snapshot()["domain"] == "general"
+    assert llm.reasoning_frame.to_snapshot()["domain"] == "creation"
     assert store.session.risk_level == "low"
-    assert store.session.last_reasoning_context["intent"]["intent"] == "general"
+    assert store.session.last_reasoning_context["intent"]["intent"] == "creation_request"
     assert store.session.state_snapshots
     assert store.session.execution_traces[-1]["steps"] == ["gate", "intent", "structure", "llm", "trace"]
 
@@ -106,7 +106,7 @@ async def test_invalid_generated_text_gets_safe_fallback_after_retry() -> None:
     assert llm.calls == 1
     assert "JSON" not in response
     assert "pipeline" not in response
-    assert "I can help with this" in response
+    assert "Answer unavailable." in response
 
 
 async def test_structured_llm_answer_is_rejected_and_regenerated() -> None:

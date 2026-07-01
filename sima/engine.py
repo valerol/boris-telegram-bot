@@ -49,42 +49,13 @@ class IntentEngine:
         )
 
     def _intent(self, text: str) -> str:
-        lower = text.lower()
-        if "?" in text or lower.startswith(("how", "what", "why", "when", "where", "who")):
-            return "question"
-        if lower.startswith(("write", "draft", "create", "make", "generate")):
-            return "creation"
-        if lower.startswith(("fix", "debug", "improve", "review")):
-            return "revision"
-        if lower.startswith(("compare", "choose", "decide")):
-            return "decision"
-        return "general"
+        return _classify_intent(text)
 
     def _opers(self, text: str, intent: str) -> list[str]:
-        base = {
-            "question": ["classify_question", "extract_answer_target"],
-            "creation": ["classify_artifact", "infer_output_format"],
-            "revision": ["classify_revision", "locate_change_target"],
-            "decision": ["classify_decision", "extract_options", "extract_criteria"],
-            "general": ["classify_open_request", "select_response_mode"],
-        }
-        opers = list(base.get(intent, base["general"]))
-        if len(text.split()) > 20:
-            opers.insert(1, "compress_context")
-        return opers
+        return _keywords(text)
 
     def _missing_info(self, text: str, intent: str) -> list[str]:
-        missing: list[str] = []
-        if len(text.split()) < 4:
-            missing.append("detail_level")
-        if intent in {"creation", "revision"} and not any(
-            marker in text.lower() for marker in ("tone", "format", "length", "audience")
-        ):
-            missing.append("style_constraints")
-        if intent == "decision" and "between" not in text.lower():
-            missing.append("decision_options")
-            missing.append("decision_criteria")
-        return missing
+        return _missing_info(text, intent)
 
     def _uncertainty(self, text: str, missing_info: list[str]) -> float:
         score = 0.1
@@ -98,10 +69,57 @@ IntentAnalyzer = IntentEngine
 
 
 def sima_run(text: str) -> dict[str, object]:
-    words = text.split()
+    cleaned = " ".join(text.strip().split())
+    intent = _classify_intent(cleaned)
+    missing_info = _missing_info(cleaned, intent)
     return {
-        "intent": "question" if "?" in text else "general",
-        "opers": words[:5],
-        "uncertainty": 0.4,
-        "missing_info": [],
+        "intent": intent,
+        "opers": _keywords(cleaned),
+        "uncertainty": _uncertainty(cleaned, missing_info),
+        "missing_info": missing_info,
     }
+
+
+def _classify_intent(text: str) -> str:
+    lower = text.lower()
+    first = lower.split(maxsplit=1)[0] if lower else ""
+    if lower.startswith(("/", "help", "settings", "config", "status", "version")):
+        return "system_query"
+    if first in {"compare", "choose", "decide", "which", "сравни", "выбери", "реши"}:
+        return "decision_request"
+    if first in {"write", "draft", "create", "make", "generate", "напиши", "создай", "сгенерируй"}:
+        return "creation_request"
+    if first in {"explain", "tell", "describe", "clarify", "расскажи", "объясни", "опиши", "поясни"}:
+        return "explanation_request"
+    if "?" in text or first in {"how", "what", "why", "when", "where", "who", "как", "что", "почему", "когда", "где", "кто"}:
+        return "question"
+    if any(marker in lower for marker in ("лучше", "вариант", "option", "between")):
+        return "decision_request"
+    return "explanation_request"
+
+
+def _keywords(text: str) -> list[str]:
+    words = [word.strip(".,!?;:()[]{}\"'").lower() for word in text.split()]
+    return [word for word in words if word][:5]
+
+
+def _missing_info(text: str, intent: str) -> list[str]:
+    lower = text.lower()
+    missing: list[str] = []
+    if len(text.split()) < 3:
+        missing.append("scope")
+    if intent == "creation_request" and not any(token in lower for token in ("tone", "format", "length", "аудитория", "тон", "формат")):
+        missing.append("format")
+    if intent == "decision_request" and not any(token in lower for token in ("between", "or", "vs", "или", "между")):
+        missing.append("options")
+    if intent == "system_query" and len(text.split()) < 2:
+        missing.append("command_target")
+    return missing
+
+
+def _uncertainty(text: str, missing_info: list[str]) -> float:
+    score = 0.15
+    if len(text.split()) < 3:
+        score += 0.2
+    score += min(0.15 * len(missing_info), 0.45)
+    return min(round(score, 2), 1.0)

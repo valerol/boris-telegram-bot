@@ -35,6 +35,8 @@ class ReasoningEngine:
     def structure(self, analysis: IntentAnalysis, risk: str) -> ReasoningFrame:
         structured = boris_run(analysis.to_dict())
         constraints = list(structured["constraints"])
+        if risk != "low":
+            constraints.append("limit certainty")
         return ReasoningFrame(
             domain=str(structured["domain"]),
             constraints=constraints,
@@ -44,36 +46,57 @@ class ReasoningEngine:
 
     def _domain(self, task_type: str) -> str:
         domains = {
-            "question": "Direct explanation",
-            "creation": "Useful drafting",
-            "revision": "Practical improvement",
-            "decision": "Comparative reasoning",
-            "general": "General assistance",
+            "question": "qa",
+            "explanation_request": "explanation",
+            "creation_request": "creation",
+            "decision_request": "decision",
+            "system_query": "system",
         }
-        return domains.get(task_type, "General assistance")
+        return domains.get(task_type, "explanation")
 
     def _reasoning_frame(self, task_type: str) -> str:
         frames = {
-            "question": "answer the core question first and add only necessary context",
-            "creation": "produce a complete draft using sensible defaults",
-            "revision": "identify the likely issue and provide a corrected version",
-            "decision": "compare the meaningful factors and recommend a path",
-            "general": "respond directly and keep assumptions visible",
+            "question": "qa_constraints",
+            "explanation_request": "explanation_constraints",
+            "creation_request": "creation_constraints",
+            "decision_request": "decision_constraints",
+            "system_query": "system_constraints",
         }
-        return frames.get(task_type, frames["general"])
+        return frames.get(task_type, frames["explanation_request"])
 
 
 ReasoningStructurer = ReasoningEngine
 
 
 def boris_run(sima: dict[str, object]) -> dict[str, object]:
-    if sima["intent"] == "question":
+    intent = sima["intent"]
+    if intent == "question":
         return {
             "domain": "qa",
             "constraints": ["be concise", "avoid hallucination"],
         }
+    if intent == "explanation_request":
+        return {
+            "domain": "explanation",
+            "constraints": ["define terms", "preserve scope", "avoid hallucination"],
+        }
+    if intent == "creation_request":
+        return {
+            "domain": "creation",
+            "constraints": ["produce requested artifact", "respect missing_info"],
+        }
+    if intent == "decision_request":
+        return {
+            "domain": "decision",
+            "constraints": ["compare options", "state tradeoffs", "avoid unsupported certainty"],
+        }
+    if intent == "system_query":
+        return {
+            "domain": "system",
+            "constraints": ["answer operationally", "do not expose hidden state"],
+        }
 
     return {
-        "domain": "general",
-        "constraints": ["be neutral"],
+        "domain": "explanation",
+        "constraints": ["define terms", "preserve scope", "avoid hallucination"],
     }

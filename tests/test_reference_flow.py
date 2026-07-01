@@ -29,9 +29,9 @@ def test_reference_stage_outputs() -> None:
     assert bois == {"allowed": True, "reason": "ok", "risk": "low"}
     assert sima == {
         "intent": "question",
-        "opers": ["What", "now?"],
-        "uncertainty": 0.4,
-        "missing_info": [],
+        "opers": ["what", "now"],
+        "uncertainty": 0.5,
+        "missing_info": ["scope"],
     }
     assert boris == {"domain": "qa", "constraints": ["be concise", "avoid hallucination"]}
 
@@ -40,15 +40,15 @@ def test_reference_trace_renderer() -> None:
     output = render_trace(
         "What now?",
         {"allowed": True, "reason": "ok", "risk": "low"},
-        {"intent": "question", "opers": ["What", "now?"], "uncertainty": 0.4, "missing_info": []},
+        {"intent": "question", "opers": ["what", "now"], "uncertainty": 0.15, "missing_info": []},
         {"domain": "qa", "constraints": ["be concise", "avoid hallucination"]},
         "Direct answer.",
     )
 
-    assert "Intent: question" in output
-    assert "Ops: What, now?" in output
-    assert "Risk: low" in output
-    assert "Constraints: be concise, avoid hallucination" in output
+    assert "Intent class: question." in output
+    assert "- opers: what, now" in output
+    assert "- risk: low" in output
+    assert "- constraints: be concise, avoid hallucination" in output
 
 
 async def test_process_message_stops_before_llm_when_blocked() -> None:
@@ -57,4 +57,3 @@ async def test_process_message_stops_before_llm_when_blocked() -> None:
 
     assert response == REFUSAL_TEXT
     assert llm.calls == 0
-

@@ -65,10 +65,7 @@ class Orchestrator:
                 answer_only_retry=True,
             )
         if not self._validator.is_answer_only(answer):
-            answer = (
-                "I can help with this, but I need to keep the answer general because the generated answer "
-                "did not match the required response boundary."
-            )
+            answer = "Answer unavailable."
         gate_snapshot = {
             "allowed": gate_result.allowed,
             "risk": gate_result.risk,
@@ -113,34 +110,24 @@ class Orchestrator:
             )
         except Exception:
             return IntentAnalysis(
-                intent="general",
-                opers=["classify_open_request", "select_response_mode"],
+                intent="explanation_request",
+                opers=["fallback", "intent_parse"],
                 uncertainty=0.7,
                 missing_info=["intent_parse"],
             )
 
     def _safe_structure(self, analysis: IntentAnalysis, risk: str) -> ReasoningFrame:
         try:
-            structured = boris_run(analysis.to_dict())
-            return ReasoningFrame(
-                domain=str(structured["domain"]),
-                constraints=list(structured["constraints"]),
-                reasoning_frame="constraint_application",
-                user_visible_decision="",
-            )
+            return self._structurer.structure(analysis, risk)
         except Exception:
             return ReasoningFrame(
-                domain="General assistance",
+                domain="explanation",
                 constraints=[
-                    "Answer in natural language.",
-                    "Do not reveal hidden implementation details.",
                     "Return only the direct answer text.",
                     "Do not include headings, labels, or explanation sections.",
                 ],
-                reasoning_frame="respond directly and keep assumptions visible",
-                user_visible_decision=(
-                    "I chose to respond directly and keep assumptions visible, while avoiding unsupported claims."
-                ),
+                reasoning_frame="fallback_constraints",
+                user_visible_decision="",
             )
 
     async def _safe_complete(
@@ -154,7 +141,7 @@ class Orchestrator:
         try:
             return await self._llm.complete(user_text, history, analysis, frame, answer_only_retry=answer_only_retry)
         except Exception:
-            return "I can help with this, but I need to keep the answer general because the answer source was unavailable."
+            return "Answer unavailable."
 
 
 async def process_message(user_id: int, text: str, state: object, llm: LLMClient) -> str:

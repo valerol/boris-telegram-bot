@@ -5,7 +5,7 @@ from trace.renderer import HumanTraceRenderer
 
 def test_trace_renderer_uses_structured_sima_fields_only() -> None:
     analysis = IntentAnalysis(
-        intent="decision",
+        intent="decision_request",
         opers=["classify_decision", "extract_options"],
         uncertainty=0.46,
         missing_info=["decision_criteria"],
@@ -24,8 +24,8 @@ def test_trace_renderer_uses_structured_sima_fields_only() -> None:
         {"allowed": True, "risk": "low", "reason": "allowed"},
     )
 
-    assert "Intent: decision" in output
-    assert "Ops: classify_decision, extract_options" in output
-    assert "Uncertainty: 0.46" in output
-    assert "Risk: low" in output
+    assert "Intent class: decision_request." in output
+    assert "- opers: classify_decision, extract_options" in output
+    assert "- uncertainty: 0.46" in output
+    assert "- risk: low" in output
     assert "unused narrative field" not in output
