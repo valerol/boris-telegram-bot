@@ -6,6 +6,7 @@ from config.settings import Settings
 from core.orchestrator import REFUSAL_TEXT, Orchestrator
 from bois.guard import GateResult
 from boris.engine import ReasoningFrame
+from domain.engine import DomainFrame
 from memory.models import SessionState
 from qa.validator import REQUIRED_HEADINGS
 from sima.engine import IntentAnalysis
@@ -58,7 +59,7 @@ class ExplodingAnalyzer:
 class ExplodingStructurer:
     calls = 0
 
-    def structure(self, analysis, risk):
+    def structure(self, analysis, risk, domain=None):
         self.calls += 1
         raise AssertionError("Structurer must not run when gate blocks.")
 
@@ -92,14 +93,25 @@ class RecordingStructurer:
     def __init__(self, order: list[str]) -> None:
         self.order = order
 
-    def structure(self, analysis, risk):
+    def structure(self, analysis, risk, domain):
         self.order.append("boris")
         return ReasoningFrame(
-            domain="explanation",
+            domain=domain.domain,
             constraints=["define terms"],
             reasoning_frame="constraint_application",
             user_visible_decision="",
+            domain_signals=domain.signals,
+            domain_confidence=domain.confidence,
         )
+
+
+class RecordingDomain:
+    def __init__(self, order: list[str]) -> None:
+        self.order = order
+
+    def classify(self, analysis):
+        self.order.append("domain")
+        return DomainFrame(domain="architecture", signals=["architecture"], confidence=0.75)
 
 
 class RecordingLLM(FakeLLM):
@@ -130,7 +142,8 @@ async def test_response_uses_required_human_trace_format() -> None:
     assert store.session.risk_level == "low"
     assert store.session.last_reasoning_context["intent"]["intent"] == "creation_request"
     assert store.session.state_snapshots
-    assert store.session.execution_traces[-1]["steps"] == ["gate", "intent", "structure", "llm", "trace"]
+    assert store.session.last_reasoning_context["domain"]["domain"] == "creation"
+    assert store.session.execution_traces[-1]["steps"] == ["gate", "intent", "domain", "structure", "llm", "trace"]
 
 
 async def test_pipeline_calls_gate_first_with_session_and_preserves_order(caplog) -> None:
@@ -145,15 +158,16 @@ async def test_pipeline_calls_gate_first_with_session_and_preserves_order(caplog
         llm,
         gate=gate,
         analyzer=RecordingAnalyzer(order),
+        domain_engine=RecordingDomain(order),
         structurer=RecordingStructurer(order),
     )
 
     response = await orchestrator.handle_message(1, 10, "Расскажи о BOIS")
 
-    assert order == ["bois", "sima", "boris", "llm"]
+    assert order == ["bois", "sima", "domain", "boris", "llm"]
     assert gate.state_seen is store.session
     assert "Layered answer." in response
-    assert "PIPELINE_ACTIVE: BOIS -> SIMA -> BORIS -> LLM" in caplog.text
+    assert "PIPELINE_ACTIVE: BOIS -> SIMA -> DOMAIN -> BORIS -> LLM" in caplog.text
 
 
 async def test_blocked_request_never_calls_llm() -> None:
@@ -211,7 +225,7 @@ class BrokenAnalyzer:
 
 
 class BrokenStructurer:
-    def structure(self, analysis, risk):
+    def structure(self, analysis, risk, domain=None):
         raise RuntimeError("broken")
 
 

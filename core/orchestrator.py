@@ -6,6 +6,7 @@ from bois.gate import bois_gate
 from bois.guard import DecisionGate
 from boris.engine import ReasoningEngine, ReasoningFrame, boris_run
 from config.settings import Settings
+from domain.engine import DomainEngine, DomainFrame, domain_run
 from memory.models import ChatMessage
 from memory.store import PostgresSessionStore
 from qa.validator import ResponseValidator
@@ -25,6 +26,7 @@ class Orchestrator:
         llm: LLMClient,
         gate: DecisionGate | None = None,
         analyzer: IntentEngine | None = None,
+        domain_engine: DomainEngine | None = None,
         structurer: ReasoningEngine | None = None,
         renderer: HumanTraceRenderer | None = None,
         validator: ResponseValidator | None = None,
@@ -34,6 +36,7 @@ class Orchestrator:
         self._llm = llm
         self._gate = gate or DecisionGate()
         self._analyzer = analyzer or IntentEngine()
+        self._domain = domain_engine or DomainEngine()
         self._structurer = structurer or ReasoningEngine()
         self._renderer = renderer or HumanTraceRenderer()
         self._validator = validator or ResponseValidator()
@@ -55,9 +58,10 @@ class Orchestrator:
             await self._store.save(session.trimmed(self._settings.max_history_messages))
             return REFUSAL_TEXT
 
-        LOGGER.debug("PIPELINE_ACTIVE: BOIS -> SIMA -> BORIS -> LLM")
+        LOGGER.debug("PIPELINE_ACTIVE: BOIS -> SIMA -> DOMAIN -> BORIS -> LLM")
         analysis = self._safe_analyze(user_text)
-        frame = self._safe_structure(analysis, gate_result.risk)
+        domain = self._safe_domain(analysis)
+        frame = self._safe_structure(analysis, gate_result.risk, domain)
 
         answer = await self._safe_complete(user_text, session.conversation_history, analysis, frame)
         if not self._validator.is_answer_only(answer):
@@ -89,6 +93,7 @@ class Orchestrator:
         session.last_reasoning_context = {
             "gate": gate_snapshot,
             "intent": analysis.to_snapshot(),
+            "domain": domain.to_snapshot(),
             "structure": frame.to_snapshot(),
         }
         session.state_snapshots.append(session.last_reasoning_context)
@@ -97,7 +102,7 @@ class Orchestrator:
                 "allowed": True,
                 "risk": gate_result.risk,
                 "reason": gate_result.reason,
-                "steps": ["gate", "intent", "structure", "llm", "trace"],
+                "steps": ["gate", "intent", "domain", "structure", "llm", "trace"],
             }
         )
         await self._store.save(session.trimmed(self._settings.max_history_messages))
@@ -114,18 +119,26 @@ class Orchestrator:
                 missing_info=["intent_parse"],
             )
 
-    def _safe_structure(self, analysis: IntentAnalysis, risk: str) -> ReasoningFrame:
+    def _safe_domain(self, analysis: IntentAnalysis) -> DomainFrame:
         try:
-            return self._structurer.structure(analysis, risk)
+            return self._domain.classify(analysis)
+        except Exception:
+            return DomainFrame(domain="explanation", signals=[], confidence=0.0)
+
+    def _safe_structure(self, analysis: IntentAnalysis, risk: str, domain: DomainFrame) -> ReasoningFrame:
+        try:
+            return self._structurer.structure(analysis, risk, domain)
         except Exception:
             return ReasoningFrame(
-                domain="explanation",
+                domain=domain.domain,
                 constraints=[
                     "Return only the direct answer text.",
                     "Do not include headings, labels, or explanation sections.",
                 ],
                 reasoning_frame="fallback_constraints",
                 user_visible_decision="",
+                domain_signals=domain.signals,
+                domain_confidence=domain.confidence,
             )
 
     async def _safe_complete(
@@ -149,7 +162,8 @@ async def process_message(user_id: int, text: str, state: object, llm: LLMClient
         return REFUSAL_TEXT
 
     sima = sima_run(text)
-    boris = boris_run(sima)
+    domain = domain_run(sima)
+    boris = boris_run(sima, domain)
     analysis = IntentAnalysis(
         intent=str(sima["intent"]),
         opers=list(sima["opers"]),
@@ -161,6 +175,8 @@ async def process_message(user_id: int, text: str, state: object, llm: LLMClient
         constraints=list(boris["constraints"]),
         reasoning_frame="constraint_application",
         user_visible_decision="",
+        domain_signals=list(boris.get("domain_signals", [])),
+        domain_confidence=float(boris.get("domain_confidence", 0.0)),
     )
     answer = await llm.complete(text, [], analysis, frame)
     return render_trace(text, decision, sima, boris, answer)

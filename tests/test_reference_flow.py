@@ -1,6 +1,7 @@
 from bois.gate import bois_gate
 from boris.engine import boris_run
 from core.orchestrator import REFUSAL_TEXT, process_message
+from domain.engine import domain_run
 from memory.models import ChatMessage
 from sima.engine import sima_run
 from trace.renderer import render_trace
@@ -24,7 +25,8 @@ class FakeLLM:
 def test_reference_stage_outputs() -> None:
     bois = bois_gate("What now?", {})
     sima = sima_run("What now?")
-    boris = boris_run(sima)
+    domain = domain_run(sima)
+    boris = boris_run(sima, domain)
 
     assert bois == {"allowed": True, "reason": "ok", "risk": "low"}
     assert sima == {
@@ -33,7 +35,13 @@ def test_reference_stage_outputs() -> None:
         "uncertainty": 0.5,
         "missing_info": ["scope"],
     }
-    assert boris == {"domain": "qa", "constraints": ["be concise", "avoid hallucination"]}
+    assert domain == {"domain": "qa", "signals": [], "confidence": 0.55}
+    assert boris == {
+        "domain": "qa",
+        "constraints": ["be concise", "avoid hallucination"],
+        "domain_signals": [],
+        "domain_confidence": 0.55,
+    }
 
 
 def test_reference_trace_renderer() -> None:
