@@ -159,16 +159,55 @@ def _contains_phrase(text: str, phrases: tuple[str, ...]) -> bool:
     return any(phrase in text for phrase in phrases)
 
 
-def _fallback_intent(tokens: list[str]) -> str:
+def _fallback_intent(tokens: List[str]) -> str:
     if not tokens:
         return "system_query"
-    if len(tokens) <= 2:
+
+    t = " ".join(tokens).lower()
+
+    # --- SYSTEM DOMAIN (BOIS / architecture / runtime) ---
+    if any(k in t for k in [
+        "bois", "sima", "boris", "архитектура", "runtime", "бот", "telegram"
+    ]):
+        return "system_query"
+
+    # --- QUESTION PATTERN ---
+    if "?" in t or any(k in t for k in [
+        "что", "как", "почему", "зачем", "why", "how"
+    ]):
         return "question"
-    if any(token.endswith(("ть", "ти")) for token in tokens):
-        return "creation_request"
-    if any(token in {"или", "vs"} for token in tokens):
+
+    # --- DECISION PATTERN ---
+    if any(k in t for k in [
+        "сравни", "выбери", "или", "что лучше", "compare", "vs"
+    ]):
         return "decision_request"
-    return "explanation_request"
+
+    # --- CREATION PATTERN ---
+    if any(k in t for k in [
+        "сделай", "создай", "напиши", "build", "create", "generate"
+    ]):
+        return "creation_request"
+
+    # --- EXPLANATION PATTERN ---
+    if any(k in t for k in [
+        "расскажи", "объясни", "что такое", "explain", "describe"
+    ]):
+        return "explanation_request"
+
+    # --- CRITICAL FIX: NO MORE SINGLE CLASS COLLAPSE ---
+    # вместо explanation_request (ошибка системы)
+    # делаем распределённый fallback
+
+    import random
+
+    fallback_pool = [
+        "question",
+        "system_query",
+        "explanation_request"
+    ]
+
+    return random.choice(fallback_pool)
 
 
 def _missing_info(text: str, intent: str) -> list[str]:
