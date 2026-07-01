@@ -1,6 +1,9 @@
 import os
+import json
 from dotenv import load_dotenv
 from openai import OpenAI
+
+from boris_identity import identity_payload
 
 load_dotenv()
 
@@ -9,6 +12,25 @@ def get_client():
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set")
     return OpenAI(api_key=api_key)
+
+def build_llm_prompt(user_text: str, analysis: dict, gate_decision: dict) -> str:
+    return f"""BORIS Support identity:
+{json.dumps(identity_payload(), ensure_ascii=False, indent=2)}
+
+SIMA analysis:
+{json.dumps(analysis, ensure_ascii=False, indent=2)}
+
+Capability gate decision:
+{json.dumps(gate_decision, ensure_ascii=False, indent=2)}
+
+User request:
+{user_text}
+
+Answer only inside the allowed BORIS Support scope.
+If the gate decision limits scope, stay within BOIS/SIMA/BORIS methodology and do not perform generic expert work in the external domain.
+Do not expose internal runtime fields or raw JSON unless the user explicitly asks for that format.
+"""
+
 
 def call_llm(prompt: str):
     print("LLM_CALL_START")
@@ -22,7 +44,7 @@ def call_llm(prompt: str):
                     "role": "system",
                     "content": (
                         "You are the free reasoning engine inside BOIS Bot. "
-                        "Reason freely and answer the user directly. "
+                        "Use expert reasoning internally and answer the user directly inside BORIS Support scope. "
                         "Do not expose internal runtime fields or raw JSON unless the user explicitly asks for that format."
                     ),
                 },

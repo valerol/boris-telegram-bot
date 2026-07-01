@@ -1,8 +1,8 @@
-import json
-
-from bois_core import BOIS_CONTEXT
-from boris_llm import call_llm
+from boris_domain import resolve_domain
+from boris_gate import ALLOW_WITH_SCOPE_LIMIT, CLARIFY, DENY_OUT_OF_SCOPE, decide_capability
+from boris_llm import build_llm_prompt, call_llm
 from boris_protocol import scaffold_llm_output
+from boris_templates import CLARIFY_RU, OUT_OF_SCOPE_RU, SCOPE_LIMIT_PREFIX_RU
 from sima_analyzer import parse
 
 
@@ -10,40 +10,42 @@ LLM_ERROR_MESSAGE = "LLM call failed. Please check OPENAI_API_KEY and runtime lo
 
 
 class BOISRuntime:
+    def __init__(self, llm_call=call_llm) -> None:
+        self._llm_call = llm_call
 
     def run(self, text: str) -> dict:
         print("BOIS_RUNTIME_START")
-        parsed = parse(text)
-        prompt = self._build_prompt(text, parsed)
+        analysis = parse(text)
+        domain = resolve_domain(text)
+        analysis["domain"] = domain
+        gate_decision = decide_capability(analysis, domain)
+        analysis["gate"] = gate_decision.to_dict()
+
+        if gate_decision.decision == DENY_OUT_OF_SCOPE:
+            return scaffold_llm_output(text, OUT_OF_SCOPE_RU, analysis)
+
+        if gate_decision.decision == CLARIFY:
+            return scaffold_llm_output(text, CLARIFY_RU, analysis)
+
+        prompt = build_llm_prompt(text, analysis, gate_decision.to_dict())
 
         try:
-            raw_llm_output = call_llm(prompt)
+            raw_llm_output = self._llm_call(prompt)
         except Exception:
-            return self._llm_error_output(parsed)
+            return self._llm_error_output(analysis)
 
-        return scaffold_llm_output(text, raw_llm_output, parsed)
+        if gate_decision.decision == ALLOW_WITH_SCOPE_LIMIT:
+            raw_llm_output = f"{SCOPE_LIMIT_PREFIX_RU}\n\n{raw_llm_output}"
 
-    def _build_prompt(self, text: str, parsed: dict) -> str:
-        return f"""{BOIS_CONTEXT}
+        return scaffold_llm_output(text, raw_llm_output, analysis)
 
-User request:
-{text}
-
-Parsed runtime context:
-{json.dumps(parsed, ensure_ascii=False, indent=2)}
-
-Think freely and answer the user's request usefully.
-Use the BOIS/SIMA/BORIS context when the user asks about BOIS, SIMA, BORIS, or this assistant.
-Do not return raw JSON, schemas, or internal runtime dumps unless the user explicitly asks for them.
-"""
-
-    def _llm_error_output(self, parsed: dict) -> dict:
+    def _llm_error_output(self, analysis: dict) -> dict:
         return {
-            "input": parsed,
+            "input": analysis,
             "bois": {
-                "intent": parsed.get("intent", "general"),
-                "risk": parsed.get("risk", 0.0),
-                "uncertainty": parsed.get("uncertainty", 0.0),
+                "intent": analysis.get("intent", "general"),
+                "risk": analysis.get("risk", 0.0),
+                "uncertainty": analysis.get("uncertainty", 0.0),
                 "route": "LLM",
             },
             "reasoning": {
