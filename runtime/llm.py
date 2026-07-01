@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from openai import AsyncOpenAI
@@ -23,6 +23,7 @@ class LLMClient(Protocol):
 class OpenAILLMClient:
     api_key: str
     model: str
+    _client: AsyncOpenAI = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._client = AsyncOpenAI(api_key=self.api_key)
@@ -60,4 +61,3 @@ class OpenAILLMClient:
             temperature=0.2,
         )
         return response.choices[0].message.content or ""
-
