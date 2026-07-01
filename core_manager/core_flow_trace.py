@@ -8,6 +8,7 @@ from boris_formatter import present_answer
 from boris_gate import decide_capability
 from boris_llm import build_llm_prompt
 from boris_protocol import scaffold_llm_output
+from core_manager.core_application import build_core_application_protocol
 from core_manager.core_context import build_core_context, hash_core_package, hash_json, loaded_core_surface
 from core_manager.core_loader import ActiveCore, get_active_core
 from sima_analyzer import parse
@@ -105,6 +106,11 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
     analysis["domain"] = domain
     gate_decision = decide_capability(analysis, domain)
     analysis["gate"] = gate_decision.to_dict()
+    analysis["core_application_protocol"] = build_core_application_protocol(
+        user_text,
+        analysis,
+        gate_decision.to_dict(),
+    )
     prompt = build_llm_prompt(user_text, analysis, gate_decision.to_dict())
     scaffold = scaffold_llm_output(user_text, llm_output, analysis)
     telegram_answer = scaffold["output"]["answer"]
@@ -126,6 +132,26 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
             notes="Gate receives the structured active_core context indirectly through analysis.",
         ),
         _stage(
+            name="core_manager.core_application.build_core_application_protocol",
+            carrier="Core Application Protocol dict",
+            state="transformed" if active_core.available else "lost",
+            identity=identity,
+            evidence={
+                "core_loaded": bool(analysis["core_application_protocol"].get("core_loaded")),
+                "core_application_protocol_present": True,
+                "applicable_rules_count": len(analysis["core_application_protocol"].get("applicable_rules") or []),
+                "applicable_stop_signals_count": len(
+                    analysis["core_application_protocol"].get("applicable_stop_signals") or []
+                ),
+                "forbidden_moves_count": len(
+                    analysis["core_application_protocol"].get("forbidden_answer_moves") or []
+                ),
+                "request_kind": analysis["core_application_protocol"].get("request_kind"),
+            },
+            identity_assertable=_contains_identity(analysis["core_application_protocol"], identity),
+            notes="Protocol derives task-specific answer moves from selected loaded core rules and stop signals.",
+        ),
+        _stage(
             name="boris_llm.build_llm_prompt",
             carrier="LLM prompt string",
             state=_prompt_core_state(prompt, identity),
@@ -139,6 +165,11 @@ def trace_core_information_flow(user_text: str, llm_output: str = TRACE_PLACEHOL
                 "contains_machine_json": _contains_json_fragment(prompt, active_core.machine_json),
                 "contains_surface_contract_value": _contains_any_value(prompt, active_core.surface_contract),
                 "contains_active_rule_value": _contains_any_value(prompt, active_core.active_rules),
+                "core_application_protocol_present": "Core Application Protocol:" in prompt,
+                "applicable_rules_count": len(analysis["core_application_protocol"].get("applicable_rules") or []),
+                "forbidden_moves_count": len(
+                    analysis["core_application_protocol"].get("forbidden_answer_moves") or []
+                ),
                 "prompt_length": len(prompt),
             },
             identity_assertable=_contains_text(prompt, identity.package_sha256)

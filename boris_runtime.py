@@ -3,6 +3,7 @@ from boris_gate import ALLOW_WITH_SCOPE_LIMIT, CLARIFY, DENY_OUT_OF_SCOPE, decid
 from boris_llm import build_llm_prompt, call_llm
 from boris_protocol import scaffold_llm_output
 from boris_templates import CLARIFY_RU, CORE_UNAVAILABLE_RU, OUT_OF_SCOPE_RU, SCOPE_LIMIT_PREFIX_RU
+from core_manager.core_application import build_core_application_protocol
 from core_manager.core_context import build_core_context
 from core_manager.core_loader import get_active_core
 from sima_analyzer import parse
@@ -29,6 +30,11 @@ class BOISRuntime:
         analysis["domain"] = domain
         gate_decision = decide_capability(analysis, domain)
         analysis["gate"] = gate_decision.to_dict()
+        analysis["core_application_protocol"] = build_core_application_protocol(
+            text,
+            analysis,
+            gate_decision.to_dict(),
+        )
 
         if gate_decision.decision == DENY_OUT_OF_SCOPE:
             return scaffold_llm_output(text, OUT_OF_SCOPE_RU, analysis)
