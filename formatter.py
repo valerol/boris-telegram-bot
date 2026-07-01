@@ -23,12 +23,6 @@ BLOCKED_FALLBACKS = (
 )
 
 
-def format_response(runtime_output):
-    output = runtime_output.get("output", {}) if isinstance(runtime_output, dict) else {}
-    answer = output.get("answer", "")
-    return present_answer(answer)
-
-
 def present_answer(raw_llm_output: str) -> str:
     print("PRESENTATION_INPUT")
     text = _normalize_text(raw_llm_output)
@@ -45,10 +39,6 @@ def present_answer(raw_llm_output: str) -> str:
 
     print("PRESENTATION_OUTPUT_READY")
     return answer
-
-
-def _clean_answer(answer):
-    return present_answer(answer)
 
 
 def _normalize_text(value):

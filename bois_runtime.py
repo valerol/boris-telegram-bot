@@ -21,13 +21,7 @@ class BOISRuntime:
         except Exception:
             return self._llm_error_output(parsed)
 
-        result = scaffold_llm_output(text, raw_llm_output)
-        result["input"] = parsed
-        result["bois"]["intent"] = parsed.get("intent", result["bois"]["intent"])
-        result["bois"]["risk"] = parsed.get("risk", result["bois"]["risk"])
-        result["bois"]["uncertainty"] = parsed.get("uncertainty", result["bois"]["uncertainty"])
-        result["bois"]["route"] = "LLM"
-        return result
+        return scaffold_llm_output(text, raw_llm_output, parsed)
 
     def _build_prompt(self, text: str, parsed: dict) -> str:
         return f"""{BOIS_CONTEXT}
