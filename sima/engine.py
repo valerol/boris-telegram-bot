@@ -82,25 +82,93 @@ def sima_run(text: str) -> dict[str, object]:
 
 def _classify_intent(text: str) -> str:
     lower = text.lower()
-    first = lower.split(maxsplit=1)[0] if lower else ""
+    tokens = _keywords(lower)
+    first = tokens[0] if tokens else ""
+
+    system_markers = {
+        "architecture",
+        "архитектура",
+        "runtime",
+        "pipeline",
+        "system",
+        "система",
+        "бот",
+        "bot",
+        "settings",
+        "config",
+        "status",
+        "version",
+    }
+    explanation_verbs = {"explain", "tell", "describe", "clarify", "расскажи", "объясни", "опиши", "поясни"}
+    creation_verbs = {
+        "write",
+        "draft",
+        "create",
+        "make",
+        "generate",
+        "build",
+        "напиши",
+        "создай",
+        "создать",
+        "сгенерируй",
+        "сделай",
+    }
+    decision_markers = {
+        "compare",
+        "choose",
+        "decide",
+        "which",
+        "should",
+        "сравни",
+        "выбери",
+        "реши",
+        "лучше",
+        "вариант",
+        "option",
+        "between",
+    }
+    question_markers = {"how", "what", "why", "when", "where", "who", "как", "что", "почему", "когда", "где", "кто"}
+
     if lower.startswith(("/", "help", "settings", "config", "status", "version")):
         return "system_query"
-    if first in {"compare", "choose", "decide", "which", "сравни", "выбери", "реши"}:
-        return "decision_request"
-    if first in {"write", "draft", "create", "make", "generate", "напиши", "создай", "сгенерируй"}:
+    if first in creation_verbs:
         return "creation_request"
-    if first in {"explain", "tell", "describe", "clarify", "расскажи", "объясни", "опиши", "поясни"}:
-        return "explanation_request"
-    if "?" in text or first in {"how", "what", "why", "when", "where", "who", "как", "что", "почему", "когда", "где", "кто"}:
-        return "question"
-    if any(marker in lower for marker in ("лучше", "вариант", "option", "between")):
+    if first in decision_markers or _contains_phrase(lower, ("что лучше", "should i")):
         return "decision_request"
-    return "explanation_request"
+    if first in explanation_verbs:
+        return "explanation_request"
+    if any(marker in tokens for marker in system_markers) and any(marker in tokens for marker in {"architecture", "архитектура", "runtime", "pipeline", "system", "система", "бот", "bot"}):
+        return "system_query"
+    if "?" in text or first in question_markers or any(marker in tokens for marker in question_markers):
+        return "question"
+    if any(marker in tokens for marker in decision_markers):
+        return "decision_request"
+    if any(marker in tokens for marker in creation_verbs):
+        return "creation_request"
+    if any(marker in tokens for marker in explanation_verbs):
+        return "explanation_request"
+    return _fallback_intent(tokens)
 
 
 def _keywords(text: str) -> list[str]:
-    words = [word.strip(".,!?;:()[]{}\"'").lower() for word in text.split()]
+    words = [word.strip(".,!?;:()[]{}\"'").lower().replace("ё", "е") for word in text.split()]
     return [word for word in words if word][:5]
+
+
+def _contains_phrase(text: str, phrases: tuple[str, ...]) -> bool:
+    return any(phrase in text for phrase in phrases)
+
+
+def _fallback_intent(tokens: list[str]) -> str:
+    if not tokens:
+        return "system_query"
+    if len(tokens) <= 2:
+        return "question"
+    if any(token.endswith(("ть", "ти")) for token in tokens):
+        return "creation_request"
+    if any(token in {"или", "vs"} for token in tokens):
+        return "decision_request"
+    return "explanation_request"
 
 
 def _missing_info(text: str, intent: str) -> list[str]:
