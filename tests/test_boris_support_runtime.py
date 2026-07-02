@@ -2,6 +2,7 @@ import json
 import unittest
 from pathlib import Path
 
+import boris_runtime
 from boris_gate import ALLOW, ALLOW_WITH_SCOPE_LIMIT, DENY_OUT_OF_SCOPE, decide_capability
 from boris_runtime import BOISRuntime
 from boris_templates import CORE_UNAVAILABLE_RU
@@ -152,19 +153,58 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         self.assertEqual(result["contract"]["scope_status"], "in_scope")
         self.assertNotEqual(result["output"]["answer"], CORE_UNAVAILABLE_RU)
         self.assertIn("core_execution_filter", result["input"])
-        self.assertEqual(result["input"]["core_execution_filter"]["mode"], "unknown")
-        self.assertEqual(result["input"]["core_execution_filter"]["response_boundary"], "unset")
-        self.assertEqual(result["input"]["core_execution_filter"]["must_use_layers"], ["BOIS", "SIMA", "BORIS"])
+        execution_filter = result["input"]["core_execution_filter"]
+        self.assertEqual(set(execution_filter), {"SIMA", "BOIS", "BORIS", "SOCRATES", "EXECUTION_CONTROL"})
+        self.assertEqual(execution_filter["SIMA"]["intent_class"], "BOIS_query")
+        self.assertEqual(execution_filter["BORIS"]["mode"], "explain")
+        self.assertEqual(execution_filter["EXECUTION_CONTROL"]["response_boundary"], "no_generic_assistant_behavior")
 
         prompt = prompts[0]
         self.assertIn("CORE EXECUTION FILTER:", prompt)
-        self.assertIn('"response_boundary": "unset"', prompt)
+        self.assertIn('"response_boundary": "no_generic_assistant_behavior"', prompt)
+        self.assertIn("Apply CORE EXECUTION FILTER as the first active runtime control layer.", prompt)
         self.assertLess(prompt.index("BORIS Support identity:"), prompt.index("CORE EXECUTION FILTER:"))
         self.assertLess(prompt.index("CORE EXECUTION FILTER:"), prompt.index("Core Application Protocol:"))
         self.assertLess(prompt.index("Core Application Protocol:"), prompt.index("SIMA analysis:"))
         self.assertLess(prompt.index("SIMA analysis:"), prompt.index("Capability gate decision:"))
         self.assertLess(prompt.index("Capability gate decision:"), prompt.index("Relevant Native BOIS Core context:"))
         self.assertLess(prompt.index("Relevant Native BOIS Core context:"), prompt.index("User request:"))
+
+    def test_core_execution_filter_is_created_after_sima_and_gate(self):
+        calls = []
+        original = boris_runtime.build_core_execution_filter
+
+        def spy(active_core, sima_analysis, gate_decision):
+            calls.append(
+                {
+                    "has_sima_operation": "requested_operation" in sima_analysis,
+                    "has_gate_decision": bool(getattr(gate_decision, "decision", None)),
+                }
+            )
+            return original(active_core, sima_analysis, gate_decision)
+
+        boris_runtime.build_core_execution_filter = spy
+        try:
+            runtime = BOISRuntime(llm_call=lambda prompt: _contract_json(), core_loader=_active_core)
+            runtime.run("Расскажи о BOIS")
+        finally:
+            boris_runtime.build_core_execution_filter = original
+
+        self.assertEqual(calls, [{"has_sima_operation": True, "has_gate_decision": True}])
+
+    def test_core_execution_filter_mode_changes_prompt_control(self):
+        prompts = []
+        runtime = BOISRuntime(
+            llm_call=lambda prompt: prompts.append(prompt) or _contract_json(),
+            core_loader=_active_core,
+        )
+
+        result = runtime.run("Как реализовать BOIS runtime в Telegram-боте?")
+
+        self.assertEqual(result["contract"]["scope_status"], "in_scope")
+        self.assertEqual(result["input"]["core_execution_filter"]["BORIS"]["mode"], "implement")
+        self.assertIn('"mode": "implement"', prompts[0])
+        self.assertIn('"reasoning_depth": "physiological"', prompts[0])
 
     def test_external_domain_with_boris_prompt_contains_application_protocol(self):
         prompts = []
