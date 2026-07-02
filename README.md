@@ -33,3 +33,11 @@ sudo systemctl restart boris-telegram-bot
 ```bash
 sudo journalctl -u boris-telegram-bot -n 100 --no-pager
 ```
+
+Если сервис был настроен на старый entrypoint, он может продолжать запускать `bot.py`.
+В репозитории есть совместимый `bot.py`, но предпочтительный запуск такой:
+
+```ini
+WorkingDirectory=/opt/boris-telegram-bot
+ExecStart=/opt/boris-telegram-bot/venv/bin/python /opt/boris-telegram-bot/main.py
+```
