@@ -1,9 +1,9 @@
 import asyncio
 import unittest
 
-from bot import handlers
-from bot.state import State, get_state, set_state
-from bot.ui import ASK_QUESTION, BOIS_INFO
+import handlers
+from state import State, get_state, set_state
+from ui import ASK_QUESTION, BOIS_INFO
 
 
 class BotFSMTest(unittest.TestCase):

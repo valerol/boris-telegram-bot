@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
-from bot.handlers import handle_button_click, handle_message, handle_start
+from handlers import handle_button_click, handle_message, handle_start
 
 
 load_dotenv()

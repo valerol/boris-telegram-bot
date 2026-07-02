@@ -1,9 +1,9 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from bot.llm_client import call_llm
-from bot.state import State, get_state, set_state
-from bot.ui import ASK_QUESTION, BOIS_INFO, BOIS_START, MAOS_INFO, MAOS_START, get_main_keyboard
+from llm_client import call_llm
+from state import State, get_state, set_state
+from ui import ASK_QUESTION, BOIS_INFO, BOIS_START, MAOS_INFO, MAOS_START, get_main_keyboard
 
 
 GREETING = "Добро пожаловать в BORIS. Выберите действие:"
