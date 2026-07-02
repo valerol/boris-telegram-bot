@@ -8,7 +8,11 @@ from boris_response_contract import (
     parse_response_contract,
 )
 from boris_templates import CLARIFY_RU, CORE_UNAVAILABLE_RU, OUT_OF_SCOPE_RU
-from boris_execution.core_execution_filter import build_core_execution_filter
+from boris_execution.core_execution_filter import (
+    apply_core_execution_filter,
+    build_core_execution_filter,
+    validate_against_execution_contract,
+)
 from core_manager.core_application import build_core_application_protocol
 from core_manager.contract_extractor import extract_contract_from_active_core
 from core_manager.core_context import build_core_context
@@ -48,6 +52,12 @@ class BOISRuntime:
             f"response_boundary={core_execution_filter.get('EXECUTION_CONTROL', {}).get('response_boundary')}"
         )
         analysis["core_execution_filter"] = core_execution_filter
+        enforced_execution_contract = apply_core_execution_filter(
+            core_execution_filter,
+            sima_analysis,
+            gate_decision,
+        )
+        analysis["enforced_execution_contract"] = enforced_execution_contract
         analysis["session_core_context"] = _session_core_context(
             session_context or {},
             analysis["active_core"],
@@ -82,9 +92,15 @@ class BOISRuntime:
         contract, errors = parse_response_contract(raw_llm_output, extracted_contract, analysis)
         if contract is None:
             contract = fallback_contract(analysis, errors)
-            return _contract_output(analysis, contract, raw=raw_llm_output, route="FALLBACK", llm_called=True)
+            return _contract_output(analysis, contract, raw="", route="FALLBACK", llm_called=True)
 
-        return _contract_output(analysis, contract, raw=raw_llm_output, route="LLM", llm_called=True)
+        is_valid, execution_errors = validate_against_execution_contract(contract, enforced_execution_contract)
+        if not is_valid:
+            analysis["execution_contract_errors"] = execution_errors
+            contract = fallback_contract(analysis, execution_errors)
+            return _contract_output(analysis, contract, raw="", route="FALLBACK", llm_called=True)
+
+        return _contract_output(analysis, contract, raw=raw_llm_output, route="CONSTRAINED_LLM", llm_called=True)
 
     def status_core(self) -> str:
         active_core = self._core_loader()
@@ -200,6 +216,8 @@ def _trace(analysis: dict, route: str, llm_called: bool) -> dict:
 def _metadata(analysis: dict) -> dict:
     return {
         "core_execution_filter": analysis.get("core_execution_filter", {}),
+        "enforced_execution_contract": analysis.get("enforced_execution_contract", {}),
+        "execution_contract_errors": analysis.get("execution_contract_errors", []),
         "session_core_context": analysis.get("session_core_context", {}),
     }
 

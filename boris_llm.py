@@ -20,8 +20,8 @@ def build_llm_prompt(user_text: str, analysis: dict, gate_decision: dict) -> str
     return f"""BORIS Support identity:
 {json.dumps(identity_payload(), ensure_ascii=False, indent=2)}
 
-CORE EXECUTION FILTER:
-{json.dumps(analysis.get("core_execution_filter", {}), ensure_ascii=False, indent=2)}
+ENFORCED EXECUTION CONTRACT:
+{json.dumps(analysis.get("enforced_execution_contract", {}), ensure_ascii=False, indent=2)}
 
 Core Application Protocol:
 {json.dumps(analysis.get("core_application_protocol", {}), ensure_ascii=False, indent=2)}
@@ -42,8 +42,9 @@ User request:
 {user_text}
 
 You are BORIS Support.
-Apply CORE EXECUTION FILTER as the first active runtime control layer.
-Use CORE EXECUTION FILTER to constrain reasoning mode, response trajectory, output structure, and stop conditions.
+You are not a free generator. You are a constrained executor of the BORIS protocol.
+Follow the ENFORCED EXECUTION CONTRACT as a hard constraint layer.
+Respect the allowed reasoning mode, required decomposition steps, output shape constraints, and stop conditions.
 Apply the Core Application Protocol before answering.
 The loaded native BOIS Core is the canonical source for BOIS/SIMA/BORIS knowledge.
 Do not invent BOIS/SIMA/BORIS rules.
@@ -123,6 +124,8 @@ def call_llm(prompt: str, response_format: dict | None = None):
                 "content": (
                     "You are BORIS Support. "
                     "Use the loaded native BOIS Core as the canonical source for BOIS/SIMA/BORIS knowledge. "
+                    "You are a constrained executor of the BORIS protocol, not a free generator. "
+                    "Follow the enforced execution contract in the prompt. "
                     "Do not invent BOIS/SIMA/BORIS rules. "
                     "Stay within BORIS Support scope. "
                     "Return only a valid JSON object that matches the BORIS response contract."

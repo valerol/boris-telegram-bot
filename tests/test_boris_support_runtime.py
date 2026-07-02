@@ -168,10 +168,11 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         result = runtime.run("Расскажи о BOIS")
 
         self.assertEqual(result["contract"]["scope_status"], "in_scope")
-        self.assertEqual(result["trace"]["route"], "LLM")
+        self.assertEqual(result["trace"]["route"], "CONSTRAINED_LLM")
         self.assertTrue(result["trace"]["llm_called"])
         self.assertTrue(result["trace"]["core_used"])
         self.assertTrue(result["trace"]["filter_applied"])
+        self.assertIn("enforced_execution_contract", result["metadata"])
         self.assertNotEqual(result["output"]["answer"], CORE_UNAVAILABLE_RU)
         self.assertIn("core_execution_filter", result["input"])
         execution_filter = result["input"]["core_execution_filter"]
@@ -182,11 +183,11 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         self.assertEqual(execution_filter["EXECUTION_CONTROL"]["response_boundary"], "no_generic_assistant_behavior")
 
         prompt = prompts[0]
-        self.assertIn("CORE EXECUTION FILTER:", prompt)
+        self.assertIn("ENFORCED EXECUTION CONTRACT:", prompt)
         self.assertIn('"response_boundary": "no_generic_assistant_behavior"', prompt)
-        self.assertIn("Apply CORE EXECUTION FILTER as the first active runtime control layer.", prompt)
-        self.assertLess(prompt.index("BORIS Support identity:"), prompt.index("CORE EXECUTION FILTER:"))
-        self.assertLess(prompt.index("CORE EXECUTION FILTER:"), prompt.index("Core Application Protocol:"))
+        self.assertIn("You are not a free generator.", prompt)
+        self.assertLess(prompt.index("BORIS Support identity:"), prompt.index("ENFORCED EXECUTION CONTRACT:"))
+        self.assertLess(prompt.index("ENFORCED EXECUTION CONTRACT:"), prompt.index("Core Application Protocol:"))
         self.assertLess(prompt.index("Core Application Protocol:"), prompt.index("SIMA analysis:"))
         self.assertLess(prompt.index("SIMA analysis:"), prompt.index("Capability gate decision:"))
         self.assertLess(prompt.index("Capability gate decision:"), prompt.index("Relevant Native BOIS Core context:"))
@@ -214,6 +215,28 @@ class BORISSupportRuntimeTest(unittest.TestCase):
 
         self.assertEqual(calls, [{"has_sima_operation": True, "has_gate_decision": True}])
 
+    def test_enforced_execution_contract_exists_before_prompt_construction(self):
+        calls = []
+        original = boris_runtime.build_llm_prompt
+
+        def spy(user_text, analysis, gate_decision):
+            calls.append(
+                {
+                    "has_enforced_contract": "enforced_execution_contract" in analysis,
+                    "route": analysis.get("enforced_execution_contract", {}).get("route"),
+                }
+            )
+            return original(user_text, analysis, gate_decision)
+
+        boris_runtime.build_llm_prompt = spy
+        try:
+            runtime = BOISRuntime(llm_call=lambda prompt: _contract_json(), core_loader=_active_core)
+            runtime.run("Расскажи о BOIS")
+        finally:
+            boris_runtime.build_llm_prompt = original
+
+        self.assertEqual(calls, [{"has_enforced_contract": True, "route": "CONSTRAINED_LLM"}])
+
     def test_core_execution_filter_mode_changes_prompt_control(self):
         prompts = []
         runtime = BOISRuntime(
@@ -225,8 +248,10 @@ class BORISSupportRuntimeTest(unittest.TestCase):
 
         self.assertEqual(result["contract"]["scope_status"], "in_scope")
         self.assertEqual(result["input"]["core_execution_filter"]["BORIS"]["mode"], "implement")
+        self.assertEqual(result["input"]["enforced_execution_contract"]["selected_reasoning_mode"], "implement")
         self.assertIn('"mode": "implement"', prompts[0])
         self.assertIn('"reasoning_depth": "physiological"', prompts[0])
+        self.assertIn('"allowed_reasoning_modes":', prompts[0])
 
     def test_external_domain_with_boris_prompt_contains_application_protocol(self):
         prompts = []
@@ -268,6 +293,7 @@ class BORISSupportRuntimeTest(unittest.TestCase):
 
         self.assertEqual(result["trace"]["route"], "FALLBACK")
         self.assertTrue(result["trace"]["llm_called"])
+        self.assertEqual(result["reasoning"]["raw"], "")
         self.assertEqual(result["contract"]["scope_status"], "in_scope")
         self.assertNotIn("not json at all", result["output"]["answer"])
         self.assertNotIn("valid_response_contract", result["output"]["answer"])
@@ -300,8 +326,10 @@ class BORISSupportRuntimeTest(unittest.TestCase):
 
         result = runtime.run("Что такое BOIS?")
 
+        self.assertEqual(result["trace"]["route"], "FALLBACK")
+        self.assertIn("Empty constrained LLM field: bois_section", result["metadata"]["execution_contract_errors"])
         self.assertEqual(result["contract"]["scope_status"], "in_scope")
-        self.assertIn("Что такое BOIS", result["output"]["answer"])
+        self.assertIn("структурированном формате BOIS/SIMA/BORIS", result["output"]["answer"])
         self.assertNotIn("valid_response_contract", result["output"]["answer"])
 
     def test_partial_direct_answer_is_completed(self):
@@ -312,6 +340,7 @@ class BORISSupportRuntimeTest(unittest.TestCase):
 
         result = runtime.run("Расскажи о BOIS")
 
+        self.assertEqual(result["trace"]["route"], "FALLBACK")
         for field in (
             "scope_status",
             "request_type",
@@ -327,7 +356,24 @@ class BORISSupportRuntimeTest(unittest.TestCase):
             "missing_info",
         ):
             self.assertIn(field, result["contract"])
-        self.assertIn("Частичный ответ", result["output"]["answer"])
+        self.assertIn("структурированном формате BOIS/SIMA/BORIS", result["output"]["answer"])
+
+    def test_generic_consulting_output_is_replaced_by_boris_fallback(self):
+        runtime = BOISRuntime(
+            llm_call=lambda prompt: _contract_json(
+                direct_answer="As a consultant, here is a generic consultant answer.",
+                bois_section="BOIS field",
+                sima_section="SIMA field",
+                boris_section="BORIS field",
+            ),
+            core_loader=_active_core,
+        )
+
+        result = runtime.run("Расскажи о BOIS")
+
+        self.assertEqual(result["trace"]["route"], "FALLBACK")
+        self.assertIn("Forbidden response form detected: generic_consulting", result["metadata"]["execution_contract_errors"])
+        self.assertNotIn("generic consultant", result["output"]["answer"].lower())
 
     def test_final_answer_never_contains_contract_validation_words(self):
         runtime = BOISRuntime(llm_call=lambda prompt: "not json at all", core_loader=_active_core)

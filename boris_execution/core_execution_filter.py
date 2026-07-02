@@ -47,6 +47,110 @@ def build_core_execution_filter(active_core, sima_analysis, gate_decision) -> di
     }
 
 
+def apply_core_execution_filter(core_execution_filter: dict, sima_analysis: dict, gate_decision) -> dict:
+    boris_org = core_execution_filter.get("BORIS", {})
+    bois_org = core_execution_filter.get("BOIS", {})
+    execution_control = core_execution_filter.get("EXECUTION_CONTROL", {})
+    mode = boris_org.get("mode", "explain")
+    reasoning_depth = boris_org.get("reasoning_depth", "surface")
+
+    return {
+        "enforcement": "hard",
+        "route": "CONSTRAINED_LLM",
+        "allowed_reasoning_modes": [mode],
+        "selected_reasoning_mode": mode,
+        "reasoning_depth": reasoning_depth,
+        "forbidden_response_forms": [
+            "generic_consulting",
+            "unstructured_freeform_answer",
+            "raw_llm_output",
+            "unsupported_external_domain_completion",
+        ],
+        "required_decomposition_steps": _required_decomposition_steps(mode, reasoning_depth),
+        "mandatory_structure_compliance": {
+            "must_use_bois_sima_boris_sections": True,
+            "must_separate": bois_org.get("must_separate", ["fact", "inference", "hypothesis"]),
+            "response_boundary": execution_control.get("response_boundary", "no_generic_assistant_behavior"),
+        },
+        "output_shape_constraints": {
+            "required_contract_fields": [
+                "scope_status",
+                "request_type",
+                "primary_domain",
+                "applied_domain",
+                "bois_section",
+                "sima_section",
+                "boris_section",
+                "direct_answer",
+                "boundary_note",
+                "next_step",
+                "confidence",
+                "missing_info",
+            ],
+            "required_non_empty_when_in_scope": [
+                "bois_section",
+                "sima_section",
+                "boris_section",
+                "direct_answer",
+                "next_step",
+            ],
+        },
+        "stop_conditions": bois_org.get("stop_conditions", []),
+        "source_filter_snapshot": core_execution_filter,
+    }
+
+
+def validate_against_execution_contract(contract: dict, enforced_execution_contract: dict) -> tuple[bool, list[str]]:
+    errors = []
+    if enforced_execution_contract.get("enforcement") != "hard":
+        errors.append("Execution contract is not hard-enforced")
+
+    allowed_modes = enforced_execution_contract.get("allowed_reasoning_modes") or []
+    if not allowed_modes:
+        errors.append("Execution contract has no allowed reasoning mode")
+
+    required_fields = enforced_execution_contract.get("output_shape_constraints", {}).get("required_contract_fields", [])
+    for field in required_fields:
+        if field not in contract:
+            errors.append(f"Missing execution contract output field: {field}")
+
+    if contract.get("scope_status") == "in_scope":
+        required_non_empty = enforced_execution_contract.get("output_shape_constraints", {}).get(
+            "required_non_empty_when_in_scope",
+            [],
+        )
+        for field in required_non_empty:
+            if not str(contract.get(field) or "").strip():
+                errors.append(f"Empty constrained LLM field: {field}")
+
+    text = " ".join(
+        str(contract.get(field) or "")
+        for field in ("bois_section", "sima_section", "boris_section", "direct_answer", "boundary_note", "next_step")
+    ).lower()
+    forbidden_markers = {
+        "generic_consulting": ("as a consultant", "generic consultant", "бизнес-консультант"),
+        "unstructured_freeform_answer": ("here is a freeform answer", "свободный ответ"),
+        "raw_llm_output": ("raw llm", "сырой ответ модели"),
+        "unsupported_external_domain_completion": ("revenue forecast", "market sizing", "прогноз выручки"),
+    }
+    for response_form in enforced_execution_contract.get("forbidden_response_forms", []):
+        for marker in forbidden_markers.get(response_form, ()):
+            if marker in text:
+                errors.append(f"Forbidden response form detected: {response_form}")
+                break
+
+    return not errors, errors
+
+
+def _required_decomposition_steps(mode: str, reasoning_depth: str) -> list[str]:
+    steps = ["BOIS_boundary", "SIMA_uncertainty", "BORIS_execution"]
+    if reasoning_depth in {"structural", "physiological"}:
+        steps.append("SOCRATES_closure")
+    if mode in {"implement", "repair"}:
+        steps.append("runtime_next_step")
+    return steps
+
+
 def _intent_class(sima_analysis: dict) -> str:
     if sima_analysis.get("is_bois_related") and sima_analysis.get("is_sima_related"):
         return "mixed"
