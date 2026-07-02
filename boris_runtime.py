@@ -24,7 +24,7 @@ class BOISRuntime:
         self._llm_call = llm_call
         self._core_loader = core_loader
 
-    def run(self, text: str) -> dict:
+    def run(self, text: str, session_context: dict | None = None) -> dict:
         print("BOIS_RUNTIME_START")
         sima_analysis = parse(text)
         analysis = sima_analysis
@@ -32,9 +32,6 @@ class BOISRuntime:
         analysis["active_core"] = build_core_context(active_core)
         extracted_contract = extract_contract_from_active_core(active_core)
         analysis["extracted_contract"] = extracted_contract.to_dict()
-
-        if _requires_native_core(analysis) and not active_core.available:
-            return _deterministic_output(analysis, CORE_UNAVAILABLE_RU)
 
         domain = resolve_domain(text)
         analysis["domain"] = domain
@@ -51,11 +48,20 @@ class BOISRuntime:
             f"response_boundary={core_execution_filter.get('EXECUTION_CONTROL', {}).get('response_boundary')}"
         )
         analysis["core_execution_filter"] = core_execution_filter
+        analysis["session_core_context"] = _session_core_context(
+            session_context or {},
+            analysis["active_core"],
+            analysis["extracted_contract"],
+            core_execution_filter,
+        )
         analysis["core_application_protocol"] = build_core_application_protocol(
             text,
             analysis,
             gate_decision.to_dict(),
         )
+
+        if _requires_native_core(analysis) and not active_core.available:
+            return _deterministic_output(analysis, CORE_UNAVAILABLE_RU)
 
         if gate_decision.decision == DENY_OUT_OF_SCOPE:
             contract = deterministic_contract(analysis, "out_of_scope", OUT_OF_SCOPE_RU)
@@ -76,8 +82,9 @@ class BOISRuntime:
         contract, errors = parse_response_contract(raw_llm_output, extracted_contract, analysis)
         if contract is None:
             contract = fallback_contract(analysis, errors)
+            return _contract_output(analysis, contract, raw=raw_llm_output, route="FALLBACK", llm_called=True)
 
-        return _contract_output(analysis, contract, raw=raw_llm_output)
+        return _contract_output(analysis, contract, raw=raw_llm_output, route="LLM", llm_called=True)
 
     def status_core(self) -> str:
         active_core = self._core_loader()
@@ -100,11 +107,13 @@ class BOISRuntime:
                 "intent": analysis.get("intent", "general"),
                 "risk": analysis.get("risk", 0.0),
                 "uncertainty": analysis.get("uncertainty", 0.0),
-                "route": "LLM",
+                "route": "FALLBACK",
             },
             "reasoning": {
                 "raw": "",
             },
+            "trace": _trace(analysis, "FALLBACK", llm_called=True),
+            "metadata": _metadata(analysis),
             "output": {
                 "answer": LLM_ERROR_MESSAGE,
                 "key_points": [],
@@ -135,7 +144,7 @@ def _deterministic_output(analysis: dict, answer: str) -> dict:
     return _contract_output(analysis, contract, raw=answer, route="RULE")
 
 
-def _contract_output(analysis: dict, contract: dict, raw: str, route: str = "LLM") -> dict:
+def _contract_output(analysis: dict, contract: dict, raw: str, route: str = "LLM", llm_called: bool = False) -> dict:
     answer = render_boris_response(contract, analysis.get("extracted_contract"))
     return {
         "input": analysis,
@@ -148,6 +157,8 @@ def _contract_output(analysis: dict, contract: dict, raw: str, route: str = "LLM
         "reasoning": {
             "raw": raw,
         },
+        "trace": _trace(analysis, route, llm_called),
+        "metadata": _metadata(analysis),
         "contract": contract,
         "output": {
             "answer": answer,
@@ -161,6 +172,36 @@ def _call_llm(llm_call, prompt: str, response_format: dict) -> str:
         return llm_call(prompt, response_format=response_format)
     except TypeError:
         return llm_call(prompt)
+
+
+def _session_core_context(
+    session_context: dict,
+    active_core_summary: dict,
+    extracted_contract: dict,
+    execution_filter: dict,
+) -> dict:
+    return {
+        "core_brief": session_context.get("core_brief", ""),
+        "active_core_summary": active_core_summary,
+        "extracted_contract": extracted_contract,
+        "execution_filter_snapshot": execution_filter,
+    }
+
+
+def _trace(analysis: dict, route: str, llm_called: bool) -> dict:
+    return {
+        "route": route,
+        "llm_called": llm_called,
+        "core_used": bool((analysis.get("active_core") or {}).get("available")),
+        "filter_applied": bool(analysis.get("core_execution_filter")),
+    }
+
+
+def _metadata(analysis: dict) -> dict:
+    return {
+        "core_execution_filter": analysis.get("core_execution_filter", {}),
+        "session_core_context": analysis.get("session_core_context", {}),
+    }
 
 
 def _display_core_path(path) -> str:

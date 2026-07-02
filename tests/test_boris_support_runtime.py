@@ -50,6 +50,8 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         result = runtime.run("Напиши рецепт борща")
 
         self.assertEqual(result["input"]["gate"]["decision"], DENY_OUT_OF_SCOPE)
+        self.assertEqual(result["trace"]["route"], "RULE")
+        self.assertFalse(result["trace"]["llm_called"])
         self.assertIn("выходит за пределы", result["output"]["answer"])
 
     def test_sima_analysis_request_is_allowed(self):
@@ -141,6 +143,21 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         self.assertIn("canonical-test-rule", prompts[0])
         self.assertIn(result["input"]["active_core"]["identity"]["loaded_surface_sha256"], prompts[0])
 
+    def test_session_core_context_is_injected_into_llm_prompt(self):
+        prompts = []
+        runtime = BOISRuntime(
+            llm_call=lambda prompt: prompts.append(prompt) or _contract_json(),
+            core_loader=_active_core,
+        )
+        session = {"core_brief": "BOIS/SIMA/BORIS base knowledge pack from /start"}
+
+        result = runtime.run("Расскажи о BOIS", session_context=session)
+
+        self.assertEqual(result["input"]["session_core_context"]["core_brief"], session["core_brief"])
+        self.assertEqual(result["metadata"]["session_core_context"]["core_brief"], session["core_brief"])
+        self.assertIn("Session Core Context:", prompts[0])
+        self.assertIn("BOIS/SIMA/BORIS base knowledge pack from /start", prompts[0])
+
     def test_core_execution_filter_is_present_in_analysis_and_prompt(self):
         prompts = []
         runtime = BOISRuntime(
@@ -151,9 +168,14 @@ class BORISSupportRuntimeTest(unittest.TestCase):
         result = runtime.run("Расскажи о BOIS")
 
         self.assertEqual(result["contract"]["scope_status"], "in_scope")
+        self.assertEqual(result["trace"]["route"], "LLM")
+        self.assertTrue(result["trace"]["llm_called"])
+        self.assertTrue(result["trace"]["core_used"])
+        self.assertTrue(result["trace"]["filter_applied"])
         self.assertNotEqual(result["output"]["answer"], CORE_UNAVAILABLE_RU)
         self.assertIn("core_execution_filter", result["input"])
         execution_filter = result["input"]["core_execution_filter"]
+        self.assertEqual(result["metadata"]["core_execution_filter"], execution_filter)
         self.assertEqual(set(execution_filter), {"SIMA", "BOIS", "BORIS", "SOCRATES", "EXECUTION_CONTROL"})
         self.assertEqual(execution_filter["SIMA"]["intent_class"], "BOIS_query")
         self.assertEqual(execution_filter["BORIS"]["mode"], "explain")
@@ -244,6 +266,8 @@ class BORISSupportRuntimeTest(unittest.TestCase):
 
         result = runtime.run("Расскажи о BOIS")
 
+        self.assertEqual(result["trace"]["route"], "FALLBACK")
+        self.assertTrue(result["trace"]["llm_called"])
         self.assertEqual(result["contract"]["scope_status"], "in_scope")
         self.assertNotIn("not json at all", result["output"]["answer"])
         self.assertNotIn("valid_response_contract", result["output"]["answer"])

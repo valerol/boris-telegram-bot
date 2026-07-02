@@ -35,6 +35,9 @@ Capability gate decision:
 Relevant Native BOIS Core context:
 {json.dumps(analysis.get("active_core", {}), ensure_ascii=False, indent=2)}
 
+Session Core Context:
+{json.dumps(analysis.get("session_core_context", {}), ensure_ascii=False, indent=2)}
+
 User request:
 {user_text}
 
